@@ -1,0 +1,90 @@
+<!doctype html>
+$('logoutBtn').onclick = ()=> signOut(auth);
+
+
+onAuthStateChanged(auth, async (user)=>{
+$('who').textContent = user ? `Вошёл: ${user.displayName||user.email}` : '';
+$('loginBtn').style.display = user ? 'none' : 'inline-block';
+$('logoutBtn').style.display = user ? 'inline-block' : 'none';
+
+
+if (!user) return;
+
+
+// Создать комнату при первом заходе
+const snap = await getDoc(roomRef);
+if (!snap.exists()) {
+const defaults = {
+boss: 'Тунг Тунг Тунг Саур',
+boss_img: 'https://i.imgur.com/hwJZoMX.png',
+max: 500,
+hp: 500,
+subtitle: 'СЕЗОН 0 | хеллоуинский портал',
+titlebig: 'СТОЛКНОВЕНИЕ',
+x: 38,
+w: 1200,
+auto_restart: false,
+defeated: false,
+public: true,
+admins: [user.uid],
+createdAt: serverTimestamp()
+};
+await setDoc(roomRef, defaults);
+} else {
+const d = snap.data();
+// Если надо — добавь себя в админы вручную через консоль один раз. (См. правила ниже)
+if (Array.isArray(d.admins) && !d.admins.includes(user.uid)) {
+try { await updateDoc(roomRef, { admins: [...d.admins, user.uid] }); } catch(e) { /* может запретить правило */ }
+}
+}
+});
+
+
+// live формы
+onSnapshot(roomRef, (snap)=>{
+if (!snap.exists()) return;
+const d = snap.data();
+for (const k in inputs) {
+if (d[k] !== undefined) inputs[k].value = d[k];
+}
+});
+
+
+// Сохранить параметры
+$('saveBtn').onclick = async ()=>{
+const patch = {};
+for (const k in inputs) {
+let v = inputs[k].value;
+if (['hp','max','x','w'].includes(k)) v = Number(v);
+patch[k] = v;
+}
+await updateDoc(roomRef, patch);
+await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
+};
+
+
+// Быстрый урон
+document.querySelectorAll('[data-dmg]').forEach(btn=>{
+btn.addEventListener('click', async ()=>{
+const n = Number(btn.dataset.dmg)||0;
+await updateDoc(roomRef, { cmd: { type:'damage', amount:n, at: serverTimestamp() } });
+});
+});
+
+
+// Шторм
+$('stormBtn').onclick = async ()=>{
+await updateDoc(roomRef, { cmd: { type:'storm', at: serverTimestamp() } });
+};
+
+
+// Сброс HP
+$('resetBtn').onclick = async ()=>{
+const snap = await getDoc(roomRef);
+const d = snap.data();
+const max = d?.max ?? 500;
+await updateDoc(roomRef, { hp: max, defeated: false, cmd: { type:'set', patch:{hp:max, defeated:false}, at: serverTimestamp() } });
+};
+</script>
+</body>
+</html>
