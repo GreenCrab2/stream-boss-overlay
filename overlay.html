@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+
+
+<!-- 🔌 Firebase listener: читает Firestore, применяет патчи/команды -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+
+// ⬇️ ЗАМЕНИ на свой конфиг из Firebase Console
+const firebaseConfig = {
+apiKey: "/* YOUR CONFIG HERE */",
+authDomain: "/* YOUR CONFIG HERE */",
+projectId: "/* YOUR CONFIG HERE */",
+storageBucket: "/* YOUR CONFIG HERE */",
+messagingSenderId: "/* YOUR CONFIG HERE */",
+appId: "/* YOUR CONFIG HERE */"
+};
+
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+
+const qs = new URLSearchParams(location.search);
+const roomId = qs.get('room') || 'demo';
+const roomRef = doc(db, 'rooms', roomId);
+
+
+// Режим для OBS: скрыть локальные кнопки и отключить хоткеи
+if (qs.get('remote_only') === '1') {
+try { document.onkeydown = null; } catch(_) {}
+try { els.buttons.style.display = 'none'; } catch(_) {}
+}
+
+
+let lastCmdAt = 0;
+onSnapshot(roomRef, (snap) => {
+if (!snap.exists()) return;
+const d = snap.data();
+
+
+// Патч состояния
+const fields = ['boss','max','hp','subtitle','titlebig','x','w','defeated','auto_restart','boss_img'];
+for (const k of fields) {
+if (d[k] !== undefined) {
+if (k === 'boss_img') {
+if (typeof defaults !== 'undefined') defaults.boss_img = d[k];
+} else if (typeof state !== 'undefined') {
+state[k] = d[k];
+}
+}
+}
+if (typeof state !== 'undefined') {
+if (state.hp > state.max) state.hp = state.max;
+if (typeof render === 'function') render();
+}
+
+
+// Команды: damage/storm/set
+const cmd = d.cmd;
+const ts = cmd && cmd.at && typeof cmd.at.toMillis === 'function' ? cmd.at.toMillis() : 0;
+if (ts && ts > lastCmdAt) {
+lastCmdAt = ts;
+if (cmd.type === 'damage') {
+if (typeof damage === 'function') damage(Math.abs(cmd.amount || 0));
+}
+if (cmd.type === 'storm') {
+if (typeof startStorm === 'function') startStorm();
+}
+if (cmd.type === 'set' && cmd.patch) {
+if (typeof state !== 'undefined') Object.assign(state, cmd.patch);
+if (typeof render === 'function') render();
+}
+}
+});
+</script>
+</body>
+</html>
