@@ -15,6 +15,7 @@
       --good: #54ff9f;
       --shadow: 0 12px 42px rgba(0,0,0,0.45), 0 0 80px rgba(255,87,240,0.12) inset;
     }
+
     html,body{ height:100%; width:100%; margin:0; padding:0; background: var(--bg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Inter, sans-serif; color: var(--text); }
     .stage{ position:relative; width:1920px; height:1080px; margin:0 auto; overflow:hidden; }
 
@@ -45,7 +46,7 @@
     .shakeOnce{ animation: shake 650ms ease; }
 
     /* boss hit */
-    @keyframes bossHit {
+    @keyframes bossHit { 
       0%   { transform: translate(0,0) scale(1); filter: brightness(1); }
       25%  { transform: translate(-10px,4px) rotate(-2.2deg) scale(1.03); filter: brightness(1.18); }
       50%  { transform: translate(10px,-4px) rotate(2.2deg) scale(0.99);  }
@@ -134,6 +135,8 @@
       defeat: document.getElementById('defeat'),
       confetti: document.getElementById('confetti'),
     };
+
+    const OBS_MODE = qs.get('remote_only') === '1'; // показываем кнопки, но без кликов/хоткеев в OBS
 
     const LS_KEY = 'bossState_v15';
     function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
@@ -285,7 +288,7 @@
       els.buttons.style.transition = 'opacity .35s ease, transform .35s ease';
       els.buttons.style.opacity = '0';
       els.buttons.style.transform = 'translate(-50%,140%)';
-      els.buttons.style.pointerEvents = 'none';
+      els.buttons.style.pointerEvents = OBS_MODE ? 'none' : 'auto';
       els.card.style.opacity = '0.0';
       els.card.style.transform = 'translate(-50%,-18px)';
       setTimeout(()=>{
@@ -325,6 +328,7 @@
     }
 
     document.addEventListener('keydown', (e)=>{
+      if (OBS_MODE) return; // в OBS хоткеи выключены
       const k = e.key;
       if(k==='1'){ damage(1); }
       if(k==='2'){ damage(5); }
@@ -333,12 +337,14 @@
     });
 
     els.buttons.addEventListener('click', (e)=>{
+      if (OBS_MODE) return; // клики отключены в OBS
       const b = e.target.closest('.btn'); if(!b) return;
       const k = b.dataset.key;
       document.dispatchEvent(new KeyboardEvent('keydown', {key:k}));
     });
 
     function playIntro(){
+      if (OBS_MODE) { try{ document.onkeydown = null; }catch(_){} }
       stopStorm();
       els.defeat.classList.remove('show');
       els.confetti.innerHTML = '';
@@ -347,7 +353,7 @@
       els.bossWrap.style.opacity = '1';
       els.buttons.style.opacity = '1';
       els.buttons.style.transform = 'translate(-50%,0)';
-      els.buttons.style.pointerEvents = 'auto';
+      els.buttons.style.pointerEvents = OBS_MODE ? 'none' : 'auto';
       if(state.hp <= 0){ state.hp = state.max; }
       state.defeated = false; save();
       render();
@@ -356,7 +362,7 @@
       els.card.style.animation = 'none'; els.buttons.style.animation = 'none';
       els.card.style.opacity = '0'; els.buttons.style.opacity = '0';
       els.card.style.transform = 'translate(-50%,-140%)'; els.buttons.style.transform = 'translate(-50%,140%)';
-      els.card.style.pointerEvents = 'none'; els.buttons.style.pointerEvents = 'none';
+      els.card.style.pointerEvents = 'none'; els.buttons.style.pointerEvents = OBS_MODE ? 'none' : 'auto';
       els.tTiny.textContent = state.subtitle; els.tBig.textContent = state.titlebig;
       requestAnimationFrame(()=>{ els.titleOnly.classList.add('titlePlay'); });
       setTimeout(()=>{
@@ -368,7 +374,7 @@
           applyLayout();
         }, 650);
         els.buttons.style.animation = 'slideUp 650ms ease forwards';
-        setTimeout(()=>{ els.card.style.pointerEvents = 'auto'; els.buttons.style.pointerEvents = 'auto'; }, 700);
+        setTimeout(()=>{ els.card.style.pointerEvents = 'auto'; els.buttons.style.pointerEvents = OBS_MODE ? 'none' : 'auto'; }, 700);
       }, 7500);
     }
 
@@ -406,7 +412,7 @@
 
     if (qs.get('remote_only') === '1') {
       try { document.onkeydown = null; } catch(_) {}
-      try { document.getElementById('buttons').style.display = 'none'; } catch(_) {}
+      try { document.getElementById('buttons').style.pointerEvents = 'none'; } catch(_) {}
     }
 
     let lastCmdAt = 0;
