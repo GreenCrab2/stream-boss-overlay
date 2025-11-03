@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+match /databases/{database}/documents {
+match /rooms/{room} {
+// Оверлей читает публично (можно ужесточить при желании)
+allow read: if true;
+
+
+// Создавать комнату — только для вошедших пользователей
+allow create: if request.auth != null;
+
+
+// Обновлять/удалять — только если пользователь уже админ в текущем документе
+allow update, delete: if request.auth != null
+&& (resource.data.admins is list)
+&& (request.auth.uid in resource.data.admins);
+}
+}
+}
