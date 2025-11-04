@@ -144,4 +144,219 @@
       buttons: document.getElementById('buttons'),
       storm: document.getElementById('storm'),
       defeat: document.getElementById('defeat'),
-      confetti: d
+      confetti: document.getElementById('confetti'),
+    };
+
+    const LS_KEY = 'bossState_v15';
+    function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+    function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+    function load(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){ return null; } }
+
+    const defaults = {
+      boss: qs.get('boss') || 'Тунг Тунг Тунг Саур',
+      max: clamp(parseInt(qs.get('max')) || 500, 1, 999999),
+      subtitle: qs.get('subtitle') || 'СЕЗОН 0 | хеллоуинский портал',
+      titlebig: qs.get('titlebig') || 'СТОЛКНОВЕНИЕ',
+      boss_img: qs.get('boss_img') || 'https://i.imgur.com/hwJZoMX.png',
+      x: parseFloat(qs.get('x')) || 38,
+      w: clamp(parseInt(qs.get('w')) || 1200, 800, 1720),
+      auto_restart: (qs.get('auto_restart') || '0') === '1',
+    };
+    let state = load() || { boss: defaults.boss, max: defaults.max, hp: defaults.max, subtitle: defaults.subtitle, titlebig: defaults.titlebig, x: defaults.x, w: defaults.w, defeated:false };
+
+    function applyLayout(){
+      els.card.style.left = (state.x || 38) + '%';
+      els.card.style.width = (state.w || 1200) + 'px';
+      const rect = els.card.getBoundingClientRect();
+      els.buttons.style.left = (rect.left + rect.width/2) + 'px';
+    }
+
+    function render(){
+      els.bossName.textContent = state.boss;
+      els.tTiny.textContent = state.subtitle;
+      els.tBig.textContent = state.titlebig;
+      const ratio = clamp(state.hp / state.max, 0, 1);
+      els.hpBar.style.setProperty('--hp', ratio);
+      els.hpNum.textContent = `HP: ${state.hp} / ${state.max}`;
+      els.bossImg.src = defaults.boss_img || '';
+      els.bossImg.style.display = 'block';
+      els.bossEmoji.style.display = 'none';
+      applyLayout();
+      save();
+    }
+
+    function floater(txt, isNeg){
+      const n = document.createElement('div');
+      n.className = 'floater' + (isNeg ? ' neg' : '');
+      n.textContent = txt;
+      n.style.left = (10 + Math.random()*80) + '%';
+      n.style.top = (20 + Math.random()*50) + '%';
+      els.floaters.appendChild(n);
+      setTimeout(()=> n.remove(), 900);
+    }
+
+    function bossHit(){
+      els.bossWrap.classList.remove('bossHit'); void els.bossWrap.offsetWidth;
+      els.bossWrap.classList.add('bossHit');
+      setTimeout(()=> els.bossWrap.classList.remove('bossHit'), 300);
+    }
+
+    function damage(d){
+      if(state.defeated) return;
+      const before = state.hp;
+      state.hp = clamp(state.hp - Math.abs(d), 0, state.max);
+      render();
+      floater(`-${Math.abs(d)}`, false);
+      if(state.hp > 0) bossHit();
+      if(before > 0 && state.hp === 0){ triggerDefeat(); }
+    }
+
+    // Storm visuals / tick damage
+    let stormEndTimeout = null, stormDropsInterval = null, stormDamageInterval = null;
+    function stopStorm(){ if(stormEndTimeout){clearTimeout(stormEndTimeout);} if(stormDropsInterval){clearInterval(stormDropsInterval);} if(stormDamageInterval){clearInterval(stormDamageInterval);} els.storm.innerHTML=''; }
+    function spawnDrops(count){
+      for(let i=0;i<count;i++){
+        const d = document.createElement('div'); d.className='r';
+        d.style.top = (-30 + Math.random()*160) + '%';
+        d.style.left= (100 + Math.random()*40) + '%';
+        d.style.height = (16 + Math.random()*36) + 'px';
+        d.style.setProperty('--dur', (1.0 + Math.random()*1.8) + 's');
+        d.style.opacity = (0.35 + Math.random()*0.65).toFixed(2);
+        els.storm.appendChild(d); setTimeout(()=> d.remove(), 3000);
+      }
+    }
+    function tickDamage(total){
+      if(state.defeated) return;
+      stopStorm(); spawnDrops(220);
+      let left = Math.max(1, Math.floor(total));
+      stormDamageInterval = setInterval(()=>{
+        if(left<=0 || state.hp<=0){ clearInterval(stormDamageInterval); stormDamageInterval=null; stopStorm(); return; }
+        const t = Math.min(left, (Math.random()<0.5?1:2));
+        damage(t); left -= t;
+      }, 100);
+      stormEndTimeout = setTimeout(()=>{ stopStorm(); }, 6000);
+      stormDropsInterval = setInterval(()=> spawnDrops(160), 200);
+    }
+
+    function clearAnim(el){ el.style.animation='none'; void el.offsetWidth; el.style.animation=''; }
+
+    const CONF_COLS = ['#ff6b6b','#ffd93d','#6bcB77','#4D96FF','#B892FF','#FF8FAB','#F8F9FA'];
+    function spawnConfetti(n){
+      for(let i=0;i<n;i++){
+        const piece = document.createElement('div'); piece.className='c';
+        const x = Math.random()*100, delay = Math.random()*0.4, dur = 1.8 + Math.random()*1.8, clr = CONF_COLS[(Math.random()*CONF_COLS.length)|0], size = 8 + Math.random()*10;
+        piece.style.left = x + '%'; piece.style.top = (-10 + Math.random()*10) + '%';
+        piece.style.background = clr; piece.style.width = size + 'px'; piece.style.height = (size*1.2) + 'px';
+        piece.style.transform = `translateY(-20px) rotate(${Math.random()*360}deg)`; piece.style.animation = `fall ${dur}s ease-in ${delay}s forwards`;
+        els.confetti.appendChild(piece); setTimeout(()=> piece.remove(), (dur+delay+0.2)*1000);
+      }
+    }
+
+    function triggerDefeat(){
+      state.defeated = true; save(); stopStorm();
+      clearAnim(els.buttons); clearAnim(els.bossWrap); clearAnim(els.card);
+      els.bossWrap.style.transition = 'transform .35s ease, opacity .35s ease';
+      els.bossWrap.style.transform = 'scale(.85) translateY(-12px)'; els.bossWrap.style.opacity = '0';
+      els.buttons.style.transition = 'opacity .35s ease, transform .35s ease';
+      els.buttons.style.opacity = '0'; els.buttons.style.transform = 'translate(-50%,140%)'; els.buttons.style.pointerEvents = 'none';
+      els.card.style.opacity = '0.0'; els.card.style.transform = 'translate(-50%,-18px)';
+      setTimeout(()=>{ els.defeat.classList.remove('show'); void els.defeat.offsetWidth; els.defeat.classList.add('show'); spawnConfetti(260); const confTimer = setInterval(()=> spawnConfetti(140), 300); setTimeout(()=> clearInterval(confTimer), 3000); }, 450);
+      if(defaults.auto_restart){ setTimeout(()=>{ state.hp = state.max; state.defeated = false; save(); playIntro(); }, 6200); }
+    }
+
+    function applyQuery(){
+      const name = qs.get('boss'), max = qs.get('max'), subtitle = qs.get('subtitle'), titlebig = qs.get('titlebig'), img = qs.get('boss_img'), x = qs.get('x'), w = qs.get('w'), ar = qs.get('auto_restart');
+      if(name) state.boss = decodeURIComponent(name);
+      if(max) state.max = clamp(parseInt(max)||state.max, 1, 999999);
+      if(subtitle) state.subtitle = decodeURIComponent(subtitle);
+      if(titlebig) state.titlebig = decodeURIComponent(titlebig);
+      if(img) { defaults.boss_img = img; }
+      if(x){ state.x = parseFloat(x) || state.x; }
+      if(w){ state.w = clamp(parseInt(w)||state.w, 800, 1720); }
+      if(ar !== null){ defaults.auto_restart = (ar === '1'); }
+      if(state.hp > state.max) state.hp = state.max;
+    }
+
+    function playIntro(){
+      stopStorm();
+      els.defeat.classList.remove('show'); els.confetti.innerHTML = '';
+      els.card.style.opacity='1'; els.card.style.transform='translate(-50%,0)';
+      els.bossWrap.style.opacity='1'; els.buttons.style.opacity='1'; els.buttons.style.transform='translate(-50%,0)'; els.buttons.style.pointerEvents='auto';
+      if(state.hp <= 0){ state.hp = state.max; } state.defeated = false; save(); render();
+
+      els.titleOnly.classList.remove('titlePlay');
+      els.card.style.animation='none'; els.buttons.style.animation='none';
+      els.card.style.opacity='0'; els.buttons.style.opacity='0';
+      els.card.style.transform='translate(-50%,-140%)'; els.buttons.style.transform='translate(-50%,140%)';
+      els.card.style.pointerEvents='none'; els.buttons.style.pointerEvents='none';
+      els.tTiny.textContent = state.subtitle; els.tBig.textContent = state.titlebig;
+      requestAnimationFrame(()=>{ els.titleOnly.classList.add('titlePlay'); });
+      setTimeout(()=>{
+        els.card.style.animation = 'cardDown 650ms ease forwards';
+        setTimeout(()=>{ els.card.style.transform='translate(-50%,0)'; els.card.style.opacity='1'; els.bossWrap.style.animation='dropIn 650ms ease forwards'; setTimeout(()=>{ els.bossWrap.style.animation=''; els.bossWrap.style.opacity='1'; }, 700); applyLayout(); }, 650);
+        els.buttons.style.animation = 'slideUp 650ms ease forwards';
+        setTimeout(()=>{ els.card.style.pointerEvents='auto'; els.buttons.style.pointerEvents='auto'; }, 700);
+      }, 7500);
+    }
+
+    window.addEventListener('resize', applyLayout);
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible'){ playIntro(); } });
+
+    function renderButtons(actions=[], extra=null){
+      const box = els.buttons; box.innerHTML = '';
+      (actions||[]).forEach(a=>{
+        const div = document.createElement('div'); div.className='btn';
+        div.textContent = `${a.label} — −${a.dmg} HP`;
+        div.addEventListener('click', ()=> damage(Number(a.dmg)||0));
+        box.appendChild(div);
+      });
+      if (extra && extra.label && Number(extra.total)>0){
+        const div = document.createElement('div'); div.className='btn';
+        div.textContent = `${extra.label} — −${extra.total} HP (тики)`;
+        div.addEventListener('click', ()=> tickDamage(Number(extra.total)||0));
+        box.appendChild(div);
+      }
+    }
+
+    // Init overlay
+    applyQuery(); render(); playIntro();
+
+    // В OBS: только отображение (не кликабельно)
+    const remoteOnly = qs.get('remote_only') === '1';
+    if(remoteOnly){ els.buttons.style.pointerEvents = 'none'; }
+
+    // Firestore Live
+    const roomId = qs.get('room') || 'demo';
+    const roomRef = doc(db, 'rooms', roomId);
+
+    let lastCmdAt = 0;
+    onSnapshot(roomRef, (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+
+      // состояние
+      const fields = ['boss','max','hp','subtitle','titlebig','x','w','defeated','auto_restart','boss_img'];
+      for (const k of fields) {
+        if (d[k] !== undefined) { if (k === 'boss_img') { defaults.boss_img = d[k]; } else { state[k] = d[k]; } }
+      }
+      if (state.hp > state.max) state.hp = state.max;
+      render();
+
+      // кнопки из Firestore
+      const actions = Array.isArray(d.actions) ? d.actions.filter(x=>x?.label && Number(x?.dmg)>0).slice(0,5) : [];
+      const extra   = d.extraSkill && d.extraSkill.label && Number(d.extraSkill.total)>0 ? d.extraSkill : null;
+      renderButtons(actions, extra);
+
+      // команды
+      const cmd = d.cmd;
+      const ts = cmd && cmd.at && typeof cmd.at.toMillis === 'function' ? cmd.at.toMillis() : 0;
+      if (ts && ts > lastCmdAt) {
+        lastCmdAt = ts;
+        if (cmd.type === 'damage') damage(Math.abs(cmd.amount || 0));
+        if (cmd.type === 'tick' && Number(cmd.total)>0) tickDamage(Number(cmd.total));
+        if (cmd.type === 'set' && cmd.patch){ Object.assign(state, cmd.patch||{}); render(); }
+      }
+    });
+  </script>
+</body>
+</html>
