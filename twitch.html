@@ -12,7 +12,7 @@
 
 <script>
 // ───────────────────────── НАСТРОЙКИ ─────────────────────────
-const CLIENT_ID    = 'l8kchqfp0vdlva741gcj6hkvkw08jb';               // твой Client ID
+const CLIENT_ID    = 'l8kchqfp0vdlva741gcj6hkvkw08jb';               // твой Client ID (Public)
 const REDIRECT_URI = location.origin + location.pathname;             // https://.../twitch.html
 const SCOPES       = ['channel:read:redemptions'];
 const REWARD_TITLE = 'Применить способность';
@@ -31,16 +31,15 @@ const FIREBASE_CONFIG = {
 
 const log = (...a)=>{ const n=document.getElementById('log'); n.textContent += a.join(' ') + '\n'; };
 
-// ───────────── Implicit Grant: получаем токен из #hash ─────────────
+// ───────────── Implicit Grant: токен из #hash ─────────────
 function parseHashToken(){
   if (!location.hash) return null;
   const p = new URLSearchParams(location.hash.slice(1));
   const token = p.get('access_token');
-  const scope = p.get('scope');
   if (token) {
-    // чистим URL (переносим room обратно в query)
+    // чистим URL (возвращаем room в query)
     history.replaceState(null,'', REDIRECT_URI + (ROOM_ID?`?room=${encodeURIComponent(ROOM_ID)}`:''));
-    return { token, scope };
+    return token;
   }
   return null;
 }
@@ -49,14 +48,14 @@ function startImplicit(){
   const url = new URL('https://id.twitch.tv/oauth2/authorize');
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', REDIRECT_URI);
-  url.searchParams.set('response_type', 'token');      // ключевое отличие
-  url.searchParams.set('force_verify', 'true');        // чтобы Twitch явно показывал подтверждение
+  url.searchParams.set('response_type', 'token');      // без обмена /oauth2/token
+  url.searchParams.set('force_verify', 'true');
   url.searchParams.set('scope', SCOPES.join(' '));
   if (ROOM_ID) url.searchParams.set('state', 'room='+encodeURIComponent(ROOM_ID));
   location.href = url.toString();
 }
 
-document.getElementById('login').onclick = ()=> startImplicit();
+document.getElementById('login').onclick  = ()=> startImplicit();
 document.getElementById('logout').onclick = ()=>{
   sessionStorage.removeItem('tw_access_token');
   log('Токен очищен. Нажми «Войти в Twitch».');
@@ -144,13 +143,13 @@ async function triggerRandomSkill(){
   try{
     log('REDIRECT_URI:', REDIRECT_URI);
 
-    // 1) если пришёл с хэшем — забираем токен
+    // 1) если вернулись с #access_token — сохраним его
     const fromHash = parseHashToken();
-    if (fromHash?.token){
-      sessionStorage.setItem('tw_access_token', fromHash.token);
+    if (fromHash){
+      sessionStorage.setItem('tw_access_token', fromHash);
     }
 
-    // 2) берём токен из sessionStorage
+    // 2) читаем токен из sessionStorage
     const accessToken = sessionStorage.getItem('tw_access_token');
     if (!accessToken){
       log('Токен не найден. Нажми «Войти в Twitch».');
