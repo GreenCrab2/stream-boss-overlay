@@ -16,13 +16,16 @@
     .btn{cursor:pointer;display:inline-block;padding:12px 14px;border-radius:10px;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:700;margin:6px 8px 0 0}
     .btn:active{transform:translateY(1px)}
     .good{background:#2e6048;border-color:#3e8462}
-    .danger{background:#613040;border-color:#8a4b5f}
     .muted{background:#2b2b36;border-color:#3b3b48}
     .hint{font-size:12px;color:var(--muted);margin-top:6px}
     code{background:#0c0c10;border:1px solid #2a2a33;border-radius:8px;padding:4px 6px;display:inline-block}
     .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
-    .error{border-color:#8a4b5f}
-    .error h1{color:var(--red)}
+
+    /* grid with QA buttons */
+    .qa-grid{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:12px}
+    .qa-grid .btn{width:100%;text-align:center}
+    @media (max-width:720px){.qa-grid{grid-template-columns:1fr}}
+
     /* ? tooltip */
     .help{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:800;font-size:12px;cursor:help;position:relative}
     .help .tt{position:absolute;left:26px;top:50%;transform:translateY(-50%) translateY(4px);background:#0c0c10;border:1px solid #2a2a33;color:#f2f2f7;padding:10px 12px;border-radius:10px;min-width:260px;max-width:360px;font-size:12px;line-height:1.35;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .15s ease, transform .15s ease;z-index:20}
@@ -32,8 +35,6 @@
 <body>
 <div class="wrap">
   <h1>Stream Boss — Пульт</h1>
-
-  <div class="card" id="configError" style="display:none"></div>
 
   <div class="card">
     <div id="authBox" style="margin-top:8px; display:flex; align-items:center; gap:10px;">
@@ -51,15 +52,28 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="qaCard">
     <h1>Быстрые действия</h1>
-    <div>
-      <button class="btn danger" data-dmg="1">Осуждающий взгляд — −1</button>
-      <button class="btn danger" data-dmg="5">Удар клешней — −5</button>
-      <button class="btn danger" data-dmg="10">Две клешни — −10</button>
-      <button class="btn danger" id="stormBtn">Призыв дождя — −50 (авто)</button>
+    <div id="qaBtns" class="qa-grid"></div>
+    <div class="hint">Пустые скиллы не отображаются. Изменяются ниже и сохраняются в комнате.</div>
+  </div>
+
+  <div class="card">
+    <h1>Настройка быстрых действий</h1>
+    <div class="row"><div><label>Название 1</label><input id="a_name1" placeholder="Осуждающий взгляд"></div><div><label>Урон 1</label><input id="a_dmg1" type="number" min="1" step="1"></div></div>
+    <div class="row"><div><label>Название 2</label><input id="a_name2"></div><div><label>Урон 2</label><input id="a_dmg2" type="number" min="1" step="1"></div></div>
+    <div class="row"><div><label>Название 3</label><input id="a_name3"></div><div><label>Урон 3</label><input id="a_dmg3" type="number" min="1" step="1"></div></div>
+    <div class="row"><div><label>Название 4</label><input id="a_name4"></div><div><label>Урон 4</label><input id="a_dmg4" type="number" min="1" step="1"></div></div>
+    <div class="row"><div><label>Название 5</label><input id="a_name5"></div><div><label>Урон 5</label><input id="a_dmg5" type="number" min="1" step="1"></div></div>
+
+    <div class="row" style="margin-top:10px">
+      <div><label>Дополнительно — название (тики)</label><input id="extra_name" placeholder="Призыв дождя"></div>
+      <div><label>Дополнительно — сумма урона</label><input id="extra_total" type="number" min="1" step="1" placeholder="50"></div>
     </div>
-    <div class="hint">Шторм сам наносит тики урона до −50 HP.</div>
+
+    <div style="margin-top:10px">
+      <button class="btn good" id="saveActions">Сохранить действия</button>
+    </div>
   </div>
 
   <div class="card">
@@ -88,10 +102,7 @@
 
   <div class="card">
     <h1>Подключение OBS</h1>
-    <div class="hint">
-      В OBS добавь Browser Source URL:
-      <div><code id="obsUrl"></code></div>
-    </div>
+    <div class="hint">В OBS добавь Browser Source URL:<div><code id="obsUrl"></code></div></div>
   </div>
 
   <div class="card" id="diag" style="display:none"></div>
@@ -102,7 +113,7 @@
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  // Firebase
+  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
     authDomain: "mini-app-adventure.firebaseapp.com",
@@ -127,21 +138,54 @@
   function setRoom(id){
     roomId  = id;
     roomRef = doc(db, 'rooms', roomId);
-    if ($('obsUrl')) {
-      const overlayUrl = new URL('./overlay.html', location.href);
-      overlayUrl.search = `room=${encodeURIComponent(roomId)}&remote_only=1`;
-      $('obsUrl').textContent = overlayUrl.toString();
-    }
+    const overlayUrl = new URL('./overlay.html', location.href);
+    overlayUrl.search = `room=${encodeURIComponent(roomId)}&remote_only=1`;
+    $('obsUrl').textContent = overlayUrl.toString();
   }
   setRoom(roomId);
 
   const inputs = ['boss','boss_img','hp','max','subtitle','titlebig','x','w']
     .reduce((acc,id)=>(acc[id]=$(id),acc),{});
 
+  // ---- Быстрые действия (кастом) ----
+  const qaIds = [1,2,3,4,5];
+  const qa = {
+    names: qaIds.map(i=>document.getElementById(`a_name${i}`)),
+    dmgs:  qaIds.map(i=>document.getElementById(`a_dmg${i}`)),
+    extraName: document.getElementById('extra_name'),
+    extraTotal: document.getElementById('extra_total'),
+    btnsBox: document.getElementById('qaBtns'),
+  };
+  function buildQaButtons(actions=[], extra=null){
+    qa.btnsBox.innerHTML = '';
+    (actions||[]).forEach(a=>{
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.style.background = '#613040';
+      b.style.borderColor = '#8a4b5f';
+      b.textContent = `${a.label} — −${a.dmg}`;
+      b.addEventListener('click', async ()=>{
+        await updateDoc(roomRef, { cmd: { type:'damage', amount:Number(a.dmg)||0, at: serverTimestamp() } });
+      });
+      qa.btnsBox.appendChild(b);
+    });
+    if (extra && extra.label && Number(extra.total)>0){
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.style.background = '#613040';
+      b.style.borderColor = '#8a4b5f';
+      b.textContent = `${extra.label} — −${extra.total} (тики)`;
+      b.addEventListener('click', async ()=>{
+        await updateDoc(roomRef, { cmd: { type:'tick', total:Number(extra.total)||0, at: serverTimestamp() } });
+      });
+      qa.btnsBox.appendChild(b);
+    }
+  }
+
   // Auth
   const provider = new GoogleAuthProvider();
-  $('loginBtn')?.addEventListener('click', ()=> signInWithPopup(auth, provider).catch(console.error));
-  $('logoutBtn')?.addEventListener('click', ()=> signOut(auth));
+  $('loginBtn').onclick = ()=> signInWithPopup(auth, provider).catch(console.error);
+  $('logoutBtn').onclick = ()=> signOut(auth);
 
   onAuthStateChanged(auth, async (user)=>{
     $('who').textContent = user ? `Вошёл: ${user.displayName||user.email}` : '';
@@ -175,15 +219,30 @@
     }
   });
 
-  // Live sync формы
+  // Live-синк форм и быстрых действий
   onSnapshot(roomRef, (snap)=>{
     if (!snap.exists()) return;
     const d = snap.data();
+
+    // параметры
     for (const k in inputs) if (inputs[k] && d[k] !== undefined) inputs[k].value = d[k];
+
+    // быстрые действия
+    const actions = Array.isArray(d.actions) ? d.actions.filter(x=>x?.label && Number(x?.dmg)>0).slice(0,5) : [];
+    const extra = d.extraSkill && d.extraSkill.label && Number(d.extraSkill.total)>0 ? d.extraSkill : null;
+    // форма
+    qaIds.forEach((i,idx)=>{
+      qa.names[idx].value = actions[idx]?.label || '';
+      qa.dmgs[idx].value  = actions[idx]?.dmg   ?? '';
+    });
+    qa.extraName.value  = extra?.label || '';
+    qa.extraTotal.value = extra?.total ?? '';
+    // кнопки
+    buildQaButtons(actions, extra);
   });
 
-  // Сохранение параметров
-  $('saveBtn')?.addEventListener('click', async ()=>{
+  // Сохранить параметры
+  $('saveBtn').onclick = async ()=>{
     const patch = {};
     for (const k in inputs) {
       let v = inputs[k]?.value;
@@ -193,28 +252,31 @@
     }
     await updateDoc(roomRef, patch);
     await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
-  });
+  };
 
-  // Быстрый урон
-  document.querySelectorAll('[data-dmg]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const n = Number(btn.dataset.dmg)||0;
-      await updateDoc(roomRef, { cmd: { type:'damage', amount:n, at: serverTimestamp() } });
-    });
-  });
+  // Сохранить быстрые действия
+  $('saveActions').onclick = async ()=>{
+    const actions = qaIds.map((i,idx)=>{
+      const label = (qa.names[idx].value||'').trim();
+      const dmg   = Number(qa.dmgs[idx].value||0);
+      return label && dmg>0 ? {label, dmg} : null;
+    }).filter(Boolean);
+    const extra = ((qa.extraName.value||'').trim() && Number(qa.extraTotal.value)>0)
+      ? { label: qa.extraName.value.trim(), total: Number(qa.extraTotal.value) }
+      : null;
 
-  // Шторм
-  $('stormBtn')?.addEventListener('click', async ()=>{
-    await updateDoc(roomRef, { cmd: { type:'storm', at: serverTimestamp() } });
-  });
+    const patch = { actions };
+    if (extra) patch.extraSkill = extra; else patch.extraSkill = null;
+    await updateDoc(roomRef, patch);
+  };
 
   // Сброс HP
-  $('resetBtn')?.addEventListener('click', async ()=>{
+  $('resetBtn').onclick = async ()=>{
     const snap = await getDoc(roomRef);
     const d = snap.data();
     const max = d?.max ?? 500;
     await updateDoc(roomRef, { hp: max, defeated: false, cmd: { type:'set', patch:{hp:max, defeated:false}, at: serverTimestamp() } });
-  });
+  };
 
   // Диагностика (?debug=1)
   if (qs.get('debug') === '1'){
@@ -223,11 +285,6 @@
     box.innerHTML = `<h1>Диагностика</h1>
       <div class="hint mono">projectId: ${firebaseConfig.projectId}</div>
       <div class="hint mono">roomId: ${roomId}</div>`;
-    try{ const test = await getDoc(roomRef);
-      box.innerHTML += `<div class="hint">Firestore доступен: <b>${test ? 'OK' : 'нет данных'}</b></div>`;
-    }catch(e){
-      box.innerHTML += `<div class="hint" style="color:var(--red)">Ошибка Firestore: ${e.message}</div>`;
-    }
   }
 </script>
 </body>
