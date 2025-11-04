@@ -34,9 +34,8 @@
     /* ====== ТОЛЬКО для «Настройка быстрых действий» ====== */
     .qa-settings .qa-row{
       display:grid;
-      /* 1-я колонка (Название) — ~33%, 2-я (Урон) — ~1/6 */
       grid-template-columns: minmax(240px,33%) minmax(110px,16.66%);
-      column-gap: 120px;    /* ← Увеличенный свободный промежуток */
+      column-gap: 120px;    /* свободный промежуток между колонками */
       row-gap: 10px;
       align-items:center;
     }
@@ -46,10 +45,13 @@
       max-width: clamp(110px, 16.66%, 220px);
       text-align:right;
     }
+    /* НЕ переносить конкретную подпись */
+    .qa-settings label.nowrap{ white-space: nowrap; }
+
     @media (max-width: 720px){
       .qa-settings .qa-row{
         grid-template-columns: 1fr minmax(110px,33%);
-        column-gap: 20px; /* на мобильных чуть меньше */
+        column-gap: 20px;
       }
     }
   </style>
@@ -111,7 +113,7 @@
 
     <div class="qa-row" style="margin-top:10px">
       <div><label>Дополнительно — название (тики)</label><input id="extra_name" class="qa-name" maxlength="30" placeholder="Призыв дождя"></div>
-      <div><label>Дополнительно — сумма урона</label><input id="extra_total" class="qa-dmg" type="number" min="1" max="99999" step="1" placeholder="50" inputmode="numeric" pattern="[0-9]*"></div>
+      <div><label class="nowrap">Дополнительно — сумма урона</label><input id="extra_total" class="qa-dmg" type="number" min="1" max="99999" step="1" placeholder="50" inputmode="numeric" pattern="[0-9]*"></div>
     </div>
 
     <div style="margin-top:10px">
@@ -157,7 +159,6 @@
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
     authDomain: "mini-app-adventure.firebaseapp.com",
@@ -171,7 +172,6 @@
   const db  = getFirestore(app);
   const auth = getAuth(app);
 
-  // Helpers
   const qs       = new URLSearchParams(location.search);
   const baseRoom = qs.get('room') || 'demo';
   const $ = (id)=>document.getElementById(id);
@@ -191,7 +191,6 @@
   const inputs = ['boss','boss_img','hp','max','subtitle','titlebig','x','w']
     .reduce((acc,id)=>(acc[id]=$(id),acc),{});
 
-  // ---- Быстрые действия (кастом) ----
   const qaIds = [1,2,3,4,5];
   const qa = {
     names: qaIds.map(i=>document.getElementById(`a_name${i}`)),
@@ -201,11 +200,10 @@
     btnsBox: document.getElementById('qaBtns'),
   };
 
-  // Ограничители ввода — только для блока «Настройка быстрых действий»
   function enforceName(e){ if (e.target.value.length > 30) e.target.value = e.target.value.slice(0,30); }
   function enforceDmg(e){
-    let v = String(e.target.value).replace(/\D+/g,'');   // только цифры
-    if (v.length > 5) v = v.slice(0,5);                  // до 5 цифр
+    let v = String(e.target.value).replace(/\D+/g,'');
+    if (v.length > 5) v = v.slice(0,5);
     let n = Number(v || 0);
     if (n > 99999) n = 99999;
     e.target.value = v ? String(n) : '';
@@ -239,7 +237,6 @@
     }
   }
 
-  // Auth
   const provider = new GoogleAuthProvider();
   $('loginBtn').onclick = ()=> signInWithPopup(auth, provider).catch(console.error);
   $('logoutBtn').onclick = ()=> signOut(auth);
@@ -251,7 +248,6 @@
 
     if (!user) { setRoom(baseRoom); return; }
 
-    // авто-личная комната
     const myRoom = `u_${user.uid.slice(0,8)}`;
     setRoom(myRoom);
 
@@ -274,15 +270,12 @@
     }
   });
 
-  // Live-синк форм и быстрых действий
   onSnapshot(roomRef, (snap)=>{
     if (!snap.exists()) return;
     const d = snap.data();
 
-    // параметры
     for (const k in inputs) if (inputs[k] && d[k] !== undefined) inputs[k].value = d[k];
 
-    // быстрые действия
     const actions = Array.isArray(d.actions) ? d.actions.filter(x=>x?.label && Number(x?.dmg)>0).slice(0,5) : [];
     const extra = d.extraSkill && d.extraSkill.label && Number(d.extraSkill.total)>0 ? d.extraSkill : null;
 
@@ -296,7 +289,6 @@
     buildQaButtons(actions, extra);
   });
 
-  // Сохранить параметры
   $('saveBtn').onclick = async ()=>{
     const patch = {};
     for (const k in inputs) {
@@ -309,7 +301,6 @@
     await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
   };
 
-  // Сохранить быстрые действия
   $('saveActions').onclick = async ()=>{
     const actions = [1,2,3,4,5].map((i,idx)=>{
       const label = (qa.names[idx].value||'').trim().slice(0,30);
@@ -328,7 +319,6 @@
     await updateDoc(roomRef, patch);
   };
 
-  // Сброс HP
   $('resetBtn').onclick = async ()=>{
     const snap = await getDoc(roomRef);
     const d = snap.data();
@@ -336,7 +326,6 @@
     await updateDoc(roomRef, { hp: max, defeated: false, cmd: { type:'set', patch:{hp:max, defeated:false}, at: serverTimestamp() } });
   };
 
-  // Диагностика (?debug=1)
   if (qs.get('debug') === '1'){
     const box = document.getElementById('diag');
     box.style.display = 'block';
