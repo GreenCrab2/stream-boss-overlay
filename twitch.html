@@ -12,8 +12,8 @@
 
 <script>
 // ───────────────────────── НАСТРОЙКИ ─────────────────────────
-const CLIENT_ID    = 'l8kchqfp0vdlva741gcj6hkvkw08jb';               // твой Client ID (Public)
-const REDIRECT_URI = location.origin + location.pathname;             // https://.../twitch.html
+const CLIENT_ID    = 'l8kchqfp0vdlva741gcj6hkvkw08jb';
+const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES       = ['channel:read:redemptions'];
 const REWARD_TITLE = 'Применить способность';
 const ROOM_ID      = new URLSearchParams(location.search).get('room') || 'demo';
@@ -37,7 +37,6 @@ function parseHashToken(){
   const p = new URLSearchParams(location.hash.slice(1));
   const token = p.get('access_token');
   if (token) {
-    // чистим URL (возвращаем room в query)
     history.replaceState(null,'', REDIRECT_URI + (ROOM_ID?`?room=${encodeURIComponent(ROOM_ID)}`:''));
     return token;
   }
@@ -48,7 +47,7 @@ function startImplicit(){
   const url = new URL('https://id.twitch.tv/oauth2/authorize');
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', REDIRECT_URI);
-  url.searchParams.set('response_type', 'token');      // без обмена /oauth2/token
+  url.searchParams.set('response_type', 'token');
   url.searchParams.set('force_verify', 'true');
   url.searchParams.set('scope', SCOPES.join(' '));
   if (ROOM_ID) url.searchParams.set('state', 'room='+encodeURIComponent(ROOM_ID));
@@ -72,20 +71,20 @@ async function fetchUser(accessToken){
 }
 
 // ───────────── EventSub WebSocket ─────────────
-let ws, sessionId;
+let esWs, esSessionId;
 const seen = new Set();
 
 async function connectEventSub(accessToken, broadcasterId){
-  ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
-  ws.onopen = ()=> log('WS: open');
-  ws.onclose= ()=> { log('WS: close → reconnect…'); setTimeout(()=>connectEventSub(accessToken,broadcasterId), 1500); };
-  ws.onmessage = async (ev)=>{
+  esWs = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+  esWs.onopen = ()=> log('WS (EventSub): open');
+  esWs.onclose= ()=> { log('WS (EventSub): close → reconnect…'); setTimeout(()=>connectEventSub(accessToken,broadcasterId), 3000); };
+  esWs.onmessage = async (ev)=>{
     const msg = JSON.parse(ev.data);
 
     if (msg.metadata?.message_type === 'session_welcome'){
-      sessionId = msg.payload.session.id;
-      log('WS: welcome, session', sessionId);
-      await subscribeEvent('channel.channel_points_custom_reward_redemption.add', { broadcaster_user_id: broadcasterId }, accessToken);
+      esSessionId = msg.payload.session.id;
+      log('WS (EventSub): welcome, session', esSessionId);
+      await subscribeEvent(accessToken, 'channel.channel_points_custom_reward_redemption.add', { broadcaster_user_id: broadcasterId });
       log('EventSub: subscribed to redemptions');
     }
 
@@ -96,9 +95,9 @@ async function connectEventSub(accessToken, broadcasterId){
         if (!e || seen.has(e.id)) return;
         seen.add(e.id);
 
-        const title = (e.reward?.title || '').trim().toLowerCase();
-        log('Redemption:', e.reward?.title, 'by', e.user_name);
-        if (title === REWARD_TITLE.trim().toLowerCase()){
+        const title = (e.reward?.title || '').trim();
+        log('EventSub → Redemption:', title, 'by', e.user_name);
+        if (title.toLowerCase() === REWARD_TITLE.trim().toLowerCase()){
           try{ await triggerRandomSkill(); log('→ skill triggered'); }catch(err){ log('Trigger error:', err.message); }
         }
       }
@@ -106,7 +105,7 @@ async function connectEventSub(accessToken, broadcasterId){
   };
 }
 
-async function subscribeEvent(type, condition, accessToken){
+async function subscribeEvent(accessToken, type, condition){
   const r = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
     method:'POST',
     headers:{
@@ -114,9 +113,61 @@ async function subscribeEvent(type, condition, accessToken){
       'Authorization':'Bearer ' + accessToken,
       'Content-Type':'application/json'
     },
-    body: JSON.stringify({ type, version:'1', condition, transport:{ method:'websocket', session_id: sessionId } })
+    body: JSON.stringify({ type, version:'1', condition, transport:{ method:'websocket', session_id: esSessionId } })
   });
-  if(!r.ok){ log('Subscribe error:', await r.text()); }
+  if(!r.ok){ log('EventSub subscribe error:', await r.text()); }
+}
+
+// ───────────── PubSub WebSocket (fallback/дополнение) ─────────────
+let psWs, psPing;
+function connectPubSub(accessToken, broadcasterId){
+  psWs = new WebSocket('wss://pubsub-edge.twitch.tv');
+  psWs.onopen = ()=>{
+    log('WS (PubSub): open');
+    const msg = {
+      type: 'LISTEN',
+      nonce: Math.random().toString(36).slice(2),
+      data: {
+        topics: [ 'channel-points-channel-v1.' + broadcasterId ],
+        auth_token: accessToken
+      }
+    };
+    psWs.send(JSON.stringify(msg));
+    // keepalive
+    psPing = setInterval(()=> psWs?.readyState===1 && psWs.send(JSON.stringify({type:'PING'})), 4*60*1000);
+  };
+  psWs.onclose = ()=>{
+    log('WS (PubSub): close → reconnect…');
+    clearInterval(psPing); psPing=null;
+    setTimeout(()=>connectPubSub(accessToken,broadcasterId), 3000);
+  };
+  psWs.onmessage = (ev)=>{
+    let data;
+    try{ data = JSON.parse(ev.data) }catch{ return; }
+
+    if (data.type === 'RESPONSE' && data.error){
+      log('PubSub RESPONSE error:', data.error);
+    }
+
+    if (data.type === 'MESSAGE' && data.data?.topic?.startsWith('channel-points-channel-v1.')){
+      try{
+        const inner = JSON.parse(data.data.message); // строка с JSON внутри
+        // Типы бывают разные; для редемпов чаще "reward-redeemed"
+        // https://dev.twitch.tv/docs/pubsub#topics
+        const redemption = inner?.data?.redemption;
+        const title = redemption?.reward?.title;
+        if (title){
+          log('PubSub → Redemption:', title, 'by', redemption.user?.login || redemption.user?.display_name || '');
+          if (title.trim().toLowerCase() === REWARD_TITLE.trim().toLowerCase()){
+            triggerRandomSkill().then(()=>log('→ skill triggered (PubSub)'))
+                                .catch(e=>log('Trigger error (PubSub):', e.message));
+          }
+        }
+      }catch(e){
+        // иногда попадают другие типы сообщений
+      }
+    }
+  };
 }
 
 // ───────────── Firestore: случайный из первых 5 ─────────────
@@ -156,9 +207,11 @@ async function triggerRandomSkill(){
       return;
     }
 
+    // 3) получим данные канала и подрубим оба канала событий
     const user = await fetchUser(accessToken);
     log('Twitch:', user.display_name, `(id ${user.id})`);
     await connectEventSub(accessToken, user.id);
+    connectPubSub(accessToken, user.id);
     log(`Готово: ждём редемпы «${REWARD_TITLE}» …`);
   }catch(e){
     log('Ошибка:', e.message);
