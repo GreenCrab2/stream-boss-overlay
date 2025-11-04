@@ -4,18 +4,19 @@
 <title>Twitch Bridge → Stream Boss</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <body style="background:#0f0f14;color:#fff;font-family:system-ui;padding:16px">
-  <div style="margin-bottom:10px">
-    <button id="relogin" style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer">Перелогиниться</button>
+  <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+    <button id="login"   style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer">Войти в Twitch</button>
+    <button id="logout"  style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer">Сбросить токен</button>
   </div>
   <pre id="log" style="white-space:pre-wrap;line-height:1.4"></pre>
 
 <script>
 // ───────────────────────── НАСТРОЙКИ ─────────────────────────
-const CLIENT_ID     = 'l8kchqfp0vdlva741gcj6hkvkw08jb'; // ВАШ Client ID (от ПРИЛОЖЕНИЯ ТИПА PUBLIC)
-const REDIRECT_URI  = location.origin + location.pathname; // https://.../twitch.html
-const SCOPES        = ['channel:read:redemptions'];
-const REWARD_TITLE  = 'Применить способность';
-const ROOM_ID       = new URLSearchParams(location.search).get('room') || 'demo';
+const CLIENT_ID    = 'l8kchqfp0vdlva741gcj6hkvkw08jb';               // твой Client ID
+const REDIRECT_URI = location.origin + location.pathname;             // https://.../twitch.html
+const SCOPES       = ['channel:read:redemptions'];
+const REWARD_TITLE = 'Применить способность';
+const ROOM_ID      = new URLSearchParams(location.search).get('room') || 'demo';
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
@@ -30,74 +31,48 @@ const FIREBASE_CONFIG = {
 
 const log = (...a)=>{ const n=document.getElementById('log'); n.textContent += a.join(' ') + '\n'; };
 
-document.getElementById('relogin').onclick = ()=>{
-  sessionStorage.removeItem('t_verifier');
-  startPkce(true);
-};
+// ───────────── Implicit Grant: получаем токен из #hash ─────────────
+function parseHashToken(){
+  if (!location.hash) return null;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const token = p.get('access_token');
+  const scope = p.get('scope');
+  if (token) {
+    // чистим URL (переносим room обратно в query)
+    history.replaceState(null,'', REDIRECT_URI + (ROOM_ID?`?room=${encodeURIComponent(ROOM_ID)}`:''));
+    return { token, scope };
+  }
+  return null;
+}
 
-// ───────────── OAuth PKCE ─────────────
-function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
-async function startPkce(force=false){
-  if (!force && new URL(location.href).searchParams.get('code')) return;
-  const verBytes = crypto.getRandomValues(new Uint8Array(32));
-  const verifier = b64url(verBytes);
-  const digest   = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  const challenge= b64url(digest);
-  sessionStorage.setItem('t_verifier', verifier);
-
+function startImplicit(){
   const url = new URL('https://id.twitch.tv/oauth2/authorize');
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', REDIRECT_URI);
-  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('response_type', 'token');      // ключевое отличие
+  url.searchParams.set('force_verify', 'true');        // чтобы Twitch явно показывал подтверждение
   url.searchParams.set('scope', SCOPES.join(' '));
-  url.searchParams.set('code_challenge', challenge);
-  url.searchParams.set('code_challenge_method', 'S256');
-  // добавим room в state, чтобы сохранить после обмена
   if (ROOM_ID) url.searchParams.set('state', 'room='+encodeURIComponent(ROOM_ID));
   location.href = url.toString();
 }
 
-async function exchangeToken(code){
-  const verifier = sessionStorage.getItem('t_verifier');
-  if (!verifier) throw new Error('PKCE verifier отсутствует. Нажмите «Перелогиниться».');
+document.getElementById('login').onclick = ()=> startImplicit();
+document.getElementById('logout').onclick = ()=>{
+  sessionStorage.removeItem('tw_access_token');
+  log('Токен очищен. Нажми «Войти в Twitch».');
+};
 
-  const body = new URLSearchParams({
-    client_id: CLIENT_ID,
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: REDIRECT_URI,
-    code_verifier: verifier
-  });
-
-  const r = await fetch('https://id.twitch.tv/oauth2/token', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
-    body
-  });
-
-  const text = await r.text();
-  if (!r.ok) {
-    // Попробуем распарсить JSON ошибки — Twitch присылает {"status":400,"message":"..."}
-    try {
-      const err = JSON.parse(text);
-      throw new Error(`Token exchange failed: ${err.message || text}`);
-    } catch(_) {
-      throw new Error(`Token exchange failed: ${text || r.status}`);
-    }
-  }
-  return JSON.parse(text);
-}
-
+// ───────────── Helix utils ─────────────
 async function fetchUser(accessToken){
   const r = await fetch('https://api.twitch.tv/helix/users', {
-    headers:{ 'Client-ID': CLIENT_ID, 'Authorization':'Bearer '+accessToken }
+    headers:{ 'Client-ID': CLIENT_ID, 'Authorization': 'Bearer '+accessToken }
   });
   const j = await r.json();
-  if(!j.data?.length) throw new Error('No user from /users');
-  return j.data[0];
+  if(!j.data?.length) throw new Error('users: пусто');
+  return j.data[0]; // { id, display_name, ... }
 }
 
-// ───────────── EventSub WS ─────────────
+// ───────────── EventSub WebSocket ─────────────
 let ws, sessionId;
 const seen = new Set();
 
@@ -142,10 +117,7 @@ async function subscribeEvent(type, condition, accessToken){
     },
     body: JSON.stringify({ type, version:'1', condition, transport:{ method:'websocket', session_id: sessionId } })
   });
-  if (!r.ok) {
-    const t = await r.text();
-    log('Subscribe error:', t);
-  }
+  if(!r.ok){ log('Subscribe error:', await r.text()); }
 }
 
 // ───────────── Firestore: случайный из первых 5 ─────────────
@@ -171,33 +143,23 @@ async function triggerRandomSkill(){
 (async ()=>{
   try{
     log('REDIRECT_URI:', REDIRECT_URI);
-    const url  = new URL(location.href);
-    const code = url.searchParams.get('code');
-    const state= url.searchParams.get('state');
 
-    if(!code){
-      log('Запуск OAuth…');
-      await startPkce(false);
+    // 1) если пришёл с хэшем — забираем токен
+    const fromHash = parseHashToken();
+    if (fromHash?.token){
+      sessionStorage.setItem('tw_access_token', fromHash.token);
+    }
+
+    // 2) берём токен из sessionStorage
+    const accessToken = sessionStorage.getItem('tw_access_token');
+    if (!accessToken){
+      log('Токен не найден. Нажми «Войти в Twitch».');
       return;
     }
 
-    const tokens = await exchangeToken(code);
-    log('OAuth: токен получен');
-
-    // восстановим room из state (если был)
-    let roomPart = '';
-    if (state && state.startsWith('room=')) {
-      const r = decodeURIComponent(state.slice(5));
-      roomPart = r ? ('?room=' + encodeURIComponent(r)) : '';
-    } else if (ROOM_ID) {
-      roomPart = '?room=' + encodeURIComponent(ROOM_ID);
-    }
-
-    history.replaceState(null,'', REDIRECT_URI + roomPart);
-
-    const user = await fetchUser(tokens.access_token);
+    const user = await fetchUser(accessToken);
     log('Twitch:', user.display_name, `(id ${user.id})`);
-    await connectEventSub(tokens.access_token, user.id);
+    await connectEventSub(accessToken, user.id);
     log(`Готово: ждём редемпы «${REWARD_TITLE}» …`);
   }catch(e){
     log('Ошибка:', e.message);
