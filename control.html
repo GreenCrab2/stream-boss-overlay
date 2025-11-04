@@ -35,8 +35,9 @@
     .qa-settings .qa-row{
       display:grid;
       /* 1-я колонка (Название) — ~33%, 2-я (Урон) — ~1/6 */
-      grid-template-columns: minmax(220px,33%) minmax(110px,16.66%);
-      gap:8px; /* ближе друг к другу */
+      grid-template-columns: minmax(240px,33%) minmax(110px,16.66%);
+      column-gap: 20px;     /* ← увеличили свободное пространство между колонками */
+      row-gap: 10px;
       align-items:center;
     }
     .qa-settings .qa-name{ width:100%; } /* заполняет свою 33%-колонку */
@@ -48,6 +49,7 @@
     @media (max-width: 720px){
       .qa-settings .qa-row{
         grid-template-columns: 1fr minmax(110px,33%); /* на мобиле даём больше места */
+        column-gap: 14px;
       }
     }
   </style>
@@ -307,9 +309,9 @@
     await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
   };
 
-  // Сохранить быстрые действия (с жёсткими лимитами)
+  // Сохранить быстрые действия
   $('saveActions').onclick = async ()=>{
-    const actions = qaIds.map((i,idx)=>{
+    const actions = [1,2,3,4,5].map((i,idx)=>{
       const label = (qa.names[idx].value||'').trim().slice(0,30);
       const dmgRaw = String(qa.dmgs[idx].value||'').replace(/\D+/g,'').slice(0,5);
       const dmg = Number(dmgRaw);
