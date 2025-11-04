@@ -30,6 +30,20 @@
     .help{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:800;font-size:12px;cursor:help;position:relative}
     .help .tt{position:absolute;left:26px;top:50%;transform:translateY(-50%) translateY(4px);background:#0c0c10;border:1px solid #2a2a33;color:#f2f2f7;padding:10px 12px;border-radius:10px;min-width:260px;max-width:360px;font-size:12px;line-height:1.35;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .15s ease, transform .15s ease;z-index:20}
     .help:hover .tt,.help:focus .tt{opacity:1;transform:translateY(-50%)}
+
+    /* ====== ТОЛЬКО для раздела «Настройка быстрых действий» ====== */
+    .qa-settings .qa-row{
+      display:grid;
+      grid-template-columns: minmax(50%,1fr) minmax(120px,16.66%);
+      gap:12px;
+      align-items:center;
+    }
+    .qa-settings .qa-name{ width:100%; }
+    .qa-settings .qa-dmg{
+      width:100%;
+      max-width: clamp(120px, 16.66%, 220px); /* ≈ 1/6 контейнера */
+      text-align:right;
+    }
   </style>
 </head>
 <body>
@@ -58,22 +72,25 @@
     <div class="hint">Пустые скиллы не отображаются. Изменяются ниже и сохраняются в комнате.</div>
   </div>
 
-  <div class="card">
+  <!-- ===== Настройка быстрых действий (уменьшённые поля + ограничения) ===== -->
+  <div class="card qa-settings">
     <h1>Настройка быстрых действий</h1>
-    <div class="row"><div><label>Название 1</label><input id="a_name1" placeholder="Осуждающий взгляд"></div><div><label>Урон 1</label><input id="a_dmg1" type="number" min="1" step="1"></div></div>
-    <div class="row"><div><label>Название 2</label><input id="a_name2"></div><div><label>Урон 2</label><input id="a_dmg2" type="number" min="1" step="1"></div></div>
-    <div class="row"><div><label>Название 3</label><input id="a_name3"></div><div><label>Урон 3</label><input id="a_dmg3" type="number" min="1" step="1"></div></div>
-    <div class="row"><div><label>Название 4</label><input id="a_name4"></div><div><label>Урон 4</label><input id="a_dmg4" type="number" min="1" step="1"></div></div>
-    <div class="row"><div><label>Название 5</label><input id="a_name5"></div><div><label>Урон 5</label><input id="a_dmg5" type="number" min="1" step="1"></div></div>
 
-    <div class="row" style="margin-top:10px">
-      <div><label>Дополнительно — название (тики)</label><input id="extra_name" placeholder="Призыв дождя"></div>
-      <div><label>Дополнительно — сумма урона</label><input id="extra_total" type="number" min="1" step="1" placeholder="50"></div>
+    <div class="qa-row"><div><label>Название 1</label><input id="a_name1" class="qa-name" maxlength="30" placeholder="Осуждающий взгляд"></div><div><label>Урон 1</label><input id="a_dmg1" class="qa-dmg" type="number" min="1" max="99999" step="1" inputmode="numeric" pattern="[0-9]*"></div></div>
+    <div class="qa-row"><div><label>Название 2</label><input id="a_name2" class="qa-name" maxlength="30"></div><div><label>Урон 2</label><input id="a_dmg2" class="qa-dmg" type="number" min="1" max="99999" step="1" inputmode="numeric" pattern="[0-9]*"></div></div>
+    <div class="qa-row"><div><label>Название 3</label><input id="a_name3" class="qa-name" maxlength="30"></div><div><label>Урон 3</label><input id="a_dmg3" class="qa-dmg" type="number" min="1" max="99999" step="1" inputmode="numeric" pattern="[0-9]*"></div></div>
+    <div class="qa-row"><div><label>Название 4</label><input id="a_name4" class="qa-name" maxlength="30"></div><div><label>Урон 4</label><input id="a_dmg4" class="qa-dmg" type="number" min="1" max="99999" step="1" inputmode="numeric" pattern="[0-9]*"></div></div>
+    <div class="qa-row"><div><label>Название 5</label><input id="a_name5" class="qa-name" maxlength="30"></div><div><label>Урон 5</label><input id="a_dmg5" class="qa-dmg" type="number" min="1" max="99999" step="1" inputmode="numeric" pattern="[0-9]*"></div></div>
+
+    <div class="qa-row" style="margin-top:10px">
+      <div><label>Дополнительно — название (тики)</label><input id="extra_name" class="qa-name" maxlength="30" placeholder="Призыв дождя"></div>
+      <div><label>Дополнительно — сумма урона</label><input id="extra_total" class="qa-dmg" type="number" min="1" max="99999" step="1" placeholder="50" inputmode="numeric" pattern="[0-9]*"></div>
     </div>
 
     <div style="margin-top:10px">
       <button class="btn good" id="saveActions">Сохранить действия</button>
     </div>
+    <div class="hint">Название ≤ 30 символов. Урон — число 1…99999 (до 5 цифр). Пустые не отображаются.</div>
   </div>
 
   <div class="card">
@@ -129,7 +146,7 @@
 
   // Helpers
   const qs       = new URLSearchParams(location.search);
-  const baseRoom = qs.get('room') || 'demo';          // общая по умолчанию
+  const baseRoom = qs.get('room') || 'demo';
   const $ = (id)=>document.getElementById(id);
 
   let roomId  = baseRoom;
@@ -156,6 +173,19 @@
     extraTotal: document.getElementById('extra_total'),
     btnsBox: document.getElementById('qaBtns'),
   };
+
+  // Ограничители ввода для блока «Настройка быстрых действий»
+  function enforceName(e){ if (e.target.value.length > 30) e.target.value = e.target.value.slice(0,30); }
+  function enforceDmg(e){
+    let v = String(e.target.value).replace(/\D+/g,'');     // только цифры
+    if (v.length > 5) v = v.slice(0,5);                    // не более 5 цифр
+    let n = Number(v || 0);
+    if (n > 99999) n = 99999;
+    e.target.value = v ? String(n) : '';
+  }
+  [...qa.names, qa.extraName].forEach(el=> el?.addEventListener('input', enforceName));
+  [...qa.dmgs, qa.extraTotal].forEach(el=> el?.addEventListener('input', enforceDmg));
+
   function buildQaButtons(actions=[], extra=null){
     qa.btnsBox.innerHTML = '';
     (actions||[]).forEach(a=>{
@@ -192,14 +222,12 @@
     $('loginBtn').style.display  = user ? 'none' : 'inline-block';
     $('logoutBtn').style.display = user ? 'inline-block' : 'none';
 
-    // без логина — всегда общая
     if (!user) { setRoom(baseRoom); return; }
 
-    // с логином — автоматически личная u_XXXXXXXX
+    // авто-личная комната
     const myRoom = `u_${user.uid.slice(0,8)}`;
     setRoom(myRoom);
 
-    // создать если нет (копируя общую как шаблон)
     const snap = await getDoc(roomRef);
     if (!snap.exists()) {
       let base = null;
@@ -230,14 +258,14 @@
     // быстрые действия
     const actions = Array.isArray(d.actions) ? d.actions.filter(x=>x?.label && Number(x?.dmg)>0).slice(0,5) : [];
     const extra = d.extraSkill && d.extraSkill.label && Number(d.extraSkill.total)>0 ? d.extraSkill : null;
-    // форма
+
     qaIds.forEach((i,idx)=>{
       qa.names[idx].value = actions[idx]?.label || '';
       qa.dmgs[idx].value  = actions[idx]?.dmg   ?? '';
     });
     qa.extraName.value  = extra?.label || '';
     qa.extraTotal.value = extra?.total ?? '';
-    // кнопки
+
     buildQaButtons(actions, extra);
   });
 
@@ -254,16 +282,19 @@
     await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
   };
 
-  // Сохранить быстрые действия
+  // Сохранить быстрые действия (с жёсткими лимитами)
   $('saveActions').onclick = async ()=>{
     const actions = qaIds.map((i,idx)=>{
-      const label = (qa.names[idx].value||'').trim();
-      const dmg   = Number(qa.dmgs[idx].value||0);
-      return label && dmg>0 ? {label, dmg} : null;
+      const label = (qa.names[idx].value||'').trim().slice(0,30);
+      const dmgRaw = String(qa.dmgs[idx].value||'').replace(/\D+/g,'').slice(0,5);
+      const dmg = Number(dmgRaw);
+      return label && dmg>0 ? {label, dmg: Math.min(99999, dmg)} : null;
     }).filter(Boolean);
-    const extra = ((qa.extraName.value||'').trim() && Number(qa.extraTotal.value)>0)
-      ? { label: qa.extraName.value.trim(), total: Number(qa.extraTotal.value) }
-      : null;
+
+    const extraLabel = (qa.extraName.value||'').trim().slice(0,30);
+    const extraRaw   = String(qa.extraTotal.value||'').replace(/\D+/g,'').slice(0,5);
+    const extraNum   = Math.min(99999, Number(extraRaw||0));
+    const extra = (extraLabel && extraNum>0) ? { label: extraLabel, total: extraNum } : null;
 
     const patch = { actions };
     if (extra) patch.extraSkill = extra; else patch.extraSkill = null;
