@@ -21,7 +21,7 @@
     code{background:#0c0c10;border:1px solid #2a2a33;border-radius:8px;padding:4px 6px;display:inline-block}
     .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
 
-    /* сетка с текущими кнопками */
+    /* сетка для отображения активных кнопок */
     .qa-grid{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:12px}
     .qa-grid .btn{width:100%;text-align:center}
     @media (max-width:720px){.qa-grid{grid-template-columns:1fr}}
@@ -34,23 +34,21 @@
     /* ====== ТОЛЬКО для «Настройка быстрых действий» ====== */
     .qa-settings .qa-row{
       display:grid;
-      grid-template-columns: 1fr minmax(120px,16.66%); /* 2 колонки: название + урон */
-      gap:12px;
+      /* 1-я колонка (Название) — ~33%, 2-я (Урон) — ~1/6 */
+      grid-template-columns: minmax(220px,33%) minmax(110px,16.66%);
+      gap:8px; /* ближе друг к другу */
       align-items:center;
     }
-    /* урезаем поле названия примерно на 1/3 (остаётся ~66.7%) */
-    .qa-settings .qa-name{
-      width:66.666%;
-      max-width:66.666%;
-    }
-    /* урон — ~1/6 контейнера; выравниваем по правому краю */
+    .qa-settings .qa-name{ width:100%; } /* заполняет свою 33%-колонку */
     .qa-settings .qa-dmg{
       width:100%;
-      max-width: clamp(120px, 16.66%, 220px);
+      max-width: clamp(110px, 16.66%, 220px);
       text-align:right;
     }
     @media (max-width: 720px){
-      .qa-settings .qa-name{ width:100%; max-width:100%; }
+      .qa-settings .qa-row{
+        grid-template-columns: 1fr minmax(110px,33%); /* на мобиле даём больше места */
+      }
     }
   </style>
 </head>
@@ -80,7 +78,7 @@
     <div class="hint">Пустые скиллы не отображаются. Изменяются ниже и сохраняются в комнате.</div>
   </div>
 
-  <!-- ===== Настройка быстрых действий (урезанные поля + лимиты) ===== -->
+  <!-- ===== Настройка быстрых действий ===== -->
   <div class="card qa-settings">
     <h1>Настройка быстрых действий</h1>
 
