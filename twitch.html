@@ -119,6 +119,15 @@ async function fetchUser(accessToken){
   return j.data[0]; // { id, display_name, ... }
 }
 
+async function validateToken(accessToken){
+  const r = await fetch('https://id.twitch.tv/oauth2/validate', {
+    headers: { 'Authorization': 'OAuth ' + accessToken }
+  });
+  const j = await r.json();
+  if (j.client_id) log('Token scopes:', (j.scopes||[]).join(', ') || '(none)');
+  return j;
+}
+
 // ───────────── EventSub WebSocket ─────────────
 let esWs, esSessionId;
 const seen = new Set();
@@ -214,14 +223,59 @@ function connectPubSub(accessToken, broadcasterId){
   };
 }
 
+// ───────────── Helix polling fallback ─────────────
+let pollTimer = null, cachedRewardId = null;
+async function getRewardId(accessToken, broadcasterId){
+  if (cachedRewardId) return cachedRewardId;
+  const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards');
+  url.searchParams.set('broadcaster_id', broadcasterId);
+  url.searchParams.set('only_manageable_rewards', 'false');
+  const r = await fetch(url, { headers:{
+    'Client-ID': CLIENT_ID, 'Authorization':'Bearer '+accessToken
+  }});
+  const j = await r.json();
+  const found = (j.data||[]).find(x => (x.title||'').trim().toLowerCase() === REWARD_TITLE.trim().toLowerCase());
+  if (found){ cachedRewardId = found.id; log('Helix: reward id =', found.id); }
+  else log('Helix: reward с таким названием не найден (проверь точное имя)');
+  return cachedRewardId;
+}
+
+async function pollRedemptions(accessToken, broadcasterId){
+  try{
+    const rewardId = await getRewardId(accessToken, broadcasterId);
+    if (!rewardId) return;
+    const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions');
+    url.searchParams.set('broadcaster_id', broadcasterId);
+    url.searchParams.set('reward_id', rewardId);
+    url.searchParams.set('status', 'UNFULFILLED');
+    url.searchParams.set('first', '50');
+    const r = await fetch(url, { headers:{
+      'Client-ID': CLIENT_ID, 'Authorization':'Bearer '+accessToken
+    }});
+    if (!r.ok){ return; }
+    const j = await r.json();
+    for (const it of (j.data||[])){
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      log('Helix poll → Redemption:', it.reward?.title, 'by', it.user_login || it.user_name || '');
+      await triggerRandomSkill().then(()=>log('→ skill triggered (poll)'))
+                                .catch(e=>log('Trigger error (poll):', e.message));
+    }
+  }catch(e){
+    // молчим, чтобы не спамить
+  }
+}
+
+function startPolling(accessToken, broadcasterId){
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(()=> pollRedemptions(accessToken, broadcasterId), 5000);
+}
+
 // ───────────── Firestore: случайный из первых 5 ─────────────
 async function triggerRandomSkill(){
-  const { db, doc, getDoc, updateDoc, serverTimestamp, auth } = await (async ()=> {
+  const { db, doc, getDoc, updateDoc, serverTimestamp } = await (async ()=> {
     const x = await ensureFirebase();
-    return { 
-      db: x.db, doc: x.doc, getDoc: x.getDoc, updateDoc: x.updateDoc, serverTimestamp: x.serverTimestamp,
-      auth: x.auth
-    };
+    return { db: x.db, doc: x.doc, getDoc: x.getDoc, updateDoc: x.updateDoc, serverTimestamp: x.serverTimestamp };
   })();
 
   try{
@@ -235,7 +289,6 @@ async function triggerRandomSkill(){
     const pick = list[Math.floor(Math.random()*list.length)];
     await updateDoc(ref, { cmd: { type:'damage', amount:Number(pick.dmg)||0, at: serverTimestamp() } });
   }catch(e){
-    // типичная ошибка прав: permission-denied
     if (/permission/i.test(e.message) || /missing/i.test(e.message)){
       log('Нет прав писать в комнату. Войдите в Google под админом комнаты и попробуйте снова.');
     } else {
@@ -250,7 +303,7 @@ async function triggerRandomSkill(){
   try{
     log('REDIRECT_URI:', REDIRECT_URI);
 
-    // Firebase UI и слушатель статуса — инициализируем сразу (лениво)
+    // Firebase (лениво) — чтобы кнопки Google сразу работали
     ensureFirebase().catch(e=>log('Firebase init error:', e.message));
 
     // Twitch токен из #hash
@@ -265,11 +318,15 @@ async function triggerRandomSkill(){
       return;
     }
 
+    // Для отладки — проверим токен и выведем scopes
+    await validateToken(accessToken).catch(()=>{});
+
     const user = await fetchUser(accessToken);
     log('Twitch:', user.display_name, `(id ${user.id})`);
 
     await connectEventSub(accessToken, user.id);
     connectPubSub(accessToken, user.id);
+    startPolling(accessToken, user.id);               // ← Helix fallback
 
     log(`Готово: ждём редемпы «${REWARD_TITLE}» …`);
   }catch(e){
