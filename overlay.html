@@ -23,6 +23,10 @@
     .error{border-color:#8a4b5f}
     .error h1{color:var(--red)}
     .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
+      /* Help tooltip */
+    .help{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:800;font-size:12px;cursor:help;position:relative}
+    .help .tt{position:absolute;left:26px;top:50%;transform:translateY(-50%) translateY(4px);background:#0c0c10;border:1px solid #2a2a33;color:#f2f2f7;padding:10px 12px;border-radius:10px;min-width:260px;max-width:360px;font-size:12px;line-height:1.35;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .15s ease, transform .15s ease;z-index:20}
+    .help:hover .tt,.help:focus .tt{opacity:1;transform:translateY(-50%);} 
   </style>
 </head>
 <body>
@@ -38,7 +42,11 @@
       <button id="forkBtn" class="btn" style="display:none">Сделать личную комнату</button>
       <span id="who" style="opacity:.8;margin-left:8px"></span>
     </div>
-    <div class="hint">Войдите один раз, чтобы создать комнату и управлять ею. Оверлей читает без входа.</div>
+    <div class="hint" style="display:flex;align-items:center;gap:8px;">
+      <span class="help" tabindex="0">?
+        <span class="tt">Войдите один раз, чтобы создать комнату и управлять ею. Оверлей читает без входа. Личная комната помогает сохранять свои настройки.</span>
+      </span>
+    </div>
   </div>
 
   <div class="card">
