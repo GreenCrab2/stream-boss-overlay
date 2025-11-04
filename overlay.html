@@ -1,302 +1,454 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Stream Boss — Пульт</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stream Boss — Оверлей</title>
   <style>
-    :root{ --fg:#f2f2f7; --bg:#0f0f14; --card:#1b1b22; --line:#2a2a33; --muted:#c7c7d0; --red:#ff6b6b; }
-    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Inter,Roboto,Ubuntu,sans-serif}
-    .wrap{max-width:920px;margin:0 auto;padding:20px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0}
-    h1{margin:6px 0 12px;font-size:22px}
-    label{display:block;font-size:14px;margin:10px 0 6px;color:var(--muted)}
-    input{width:100%;padding:10px;border:1px solid #34343f;border-radius:10px;background:#0f0f14;color:#fff}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .btn{cursor:pointer;display:inline-block;padding:12px 14px;border-radius:10px;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:700;margin:6px 8px 0 0}
-    .btn:active{transform:translateY(1px)}
-    .good{background:#2e6048;border-color:#3e8462}
-    .danger{background:#613040;border-color:#8a4b5f}
-    .muted{background:#2b2b36;border-color:#3b3b48}
-    .hint{font-size:12px;color:var(--muted);margin-top:6px}
-    code{background:#0c0c10;border:1px solid #2a2a33;border-radius:8px;padding:4px 6px;display:inline-block}
-    .error{border-color:#8a4b5f}
-    .error h1{color:var(--red)}
-    .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
-      /* Help tooltip */
-    .help{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:800;font-size:12px;cursor:help;position:relative}
-    .help .tt{position:absolute;left:26px;top:50%;transform:translateY(-50%) translateY(4px);background:#0c0c10;border:1px solid #2a2a33;color:#f2f2f7;padding:10px 12px;border-radius:10px;min-width:260px;max-width:360px;font-size:12px;line-height:1.35;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .15s ease, transform .15s ease;z-index:20}
-    .help:hover .tt,.help:focus .tt{opacity:1;transform:translateY(-50%);} 
+    :root{
+      --bg: rgba(0,0,0,0.0);
+      --card: rgba(45,10,53,0.80);
+      --accent: #ff57f0;
+      --text: #f7ecff;
+      --muted: #c9aee1;
+      --danger: #ff4d6d;
+      --good: #54ff9f;
+      --shadow: 0 12px 42px rgba(0,0,0,0.45), 0 0 80px rgba(255,87,240,0.12) inset;
+    }
+
+    html,body{ height:100%; width:100%; margin:0; padding:0; background: var(--bg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Inter, sans-serif; color: var(--text); }
+    .stage{ position:relative; width:1920px; height:1080px; margin:0 auto; overflow:hidden; }
+
+    /* TITLE ONLY PASS */
+    .titleOnly{ position:absolute; left:0; right:0; top:-50%; display:flex; flex-direction:column; align-items:center; gap:14px; pointer-events:none; z-index: 5; }
+    .tiny{ font-size:28px; letter-spacing:.8px; text-transform:uppercase; color:var(--muted); text-shadow:0 6px 24px rgba(0,0,0,0.45); }
+    .big{ font-size:100px; font-weight:1000; letter-spacing:1px; text-shadow:0 10px 28px rgba(0,0,0,0.55); }
+    @keyframes titlePass { 0% { top:-50%; } 100% { top:110%; } }
+    .titlePlay{ animation: titlePass 7.5s linear forwards; }
+
+    /* BOSS CARD */
+    .boss-card{ position:absolute; left:38%; top:24px; transform:translate(-50%,-140%); width:1200px; padding:18px 24px 24px; background: var(--card); border:1px solid rgba(255,255,255,0.1); border-radius:20px; box-shadow: var(--shadow); backdrop-filter: blur(8px); overflow:visible; opacity:0; z-index: 3; transition: opacity .35s ease, transform .35s ease; }
+    @keyframes cardDown { from { transform:translate(-50%,-140%); opacity:0; } to { transform:translate(-50%,0); opacity:1; } }
+
+    .hpArea{ position: relative; height: 70px; border-radius: 16px; overflow: hidden; border:1px solid rgba(255,255,255,0.08); background: linear-gradient(180deg, rgba(255,87,240,0.18), rgba(0,0,0,0.35)); margin: 6px 0 12px; }
+    .hpBar{ --hp: 1; position:absolute; inset:0; width: calc(var(--hp) * 100%); background: linear-gradient(90deg, rgba(255,87,240,0.9), rgba(255,87,240,0.4)); box-shadow: 0 0 36px rgba(255,87,240,0.5); transition: width 260ms ease, filter 260ms ease; }
+    .hpNum{ position:absolute; left:50%; top:50%; transform: translate(-50%,-50%); font-weight: 1000; font-size: 32px; letter-spacing: .5px; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
+
+    .bossNameUnder{ text-align:center; font-size: 56px; font-weight: 1000; margin: 10px 0 6px; text-shadow:0 10px 28px rgba(0,0,0,0.55); }
+
+    .bossStage{ display:flex; align-items:center; justify-content:center; min-height: 260px; position: relative; }
+    .bossImgWrap{ position: relative; display:inline-flex; align-items:center; justify-content:center; padding:10px; border-radius: 16px; background: rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.06); box-shadow: 0 10px 30px rgba(0,0,0,0.35); opacity:0; will-change: transform, opacity; }
+    .bossImg{ width: 360px; height: 220px; object-fit: contain; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.45)); }
+    .bossEmoji{ font-size: 180px; line-height: 1; }
+
+    @keyframes dropIn { 0% { transform: translateY(-40px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+    @keyframes shake { 0%{ transform: translate(0,0) rotate(0); } 20%{ transform: translate(-6px,2px) rotate(-2deg); } 40%{ transform: translate(6px,-2px) rotate(2deg); } 60%{ transform: translate(-4px,1px) rotate(-1.2deg); } 80%{ transform: translate(4px,-1px) rotate(1.2deg); } 100%{ transform: translate(0,0) rotate(0); } }
+    .shakeOnce{ animation: shake 650ms ease; }
+
+    /* boss hit */
+    @keyframes bossHit { 
+      0%   { transform: translate(0,0) scale(1); filter: brightness(1); }
+      25%  { transform: translate(-10px,4px) rotate(-2.2deg) scale(1.03); filter: brightness(1.18); }
+      50%  { transform: translate(10px,-4px) rotate(2.2deg) scale(0.99);  }
+      75%  { transform: translate(-6px,2px) rotate(-1.2deg) scale(1.01); }
+      100% { transform: translate(0,0) scale(1); filter: brightness(1); }
+    }
+    .bossHit{ animation: bossHit 260ms ease; }
+
+    @keyframes chunk { from { transform: translateY(-6px); opacity: 1; } to { transform: translateY(-26px); opacity: 0; } }
+    .floaters{ position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+    .floater{ position:absolute; font-weight:900; font-size:24px; color: var(--good); text-shadow: 0 0 10px rgba(84,255,159,0.7); animation: chunk 800ms ease-out forwards; }
+    .floater.neg{ color: var(--danger); text-shadow: 0 0 10px rgba(255,77,109,0.7); }
+
+    /* Buttons */
+    .buttons{ position:absolute; left:50%; bottom:24px; transform: translate(-50%,140%); display:grid; grid-template-columns: repeat(2, minmax(360px, 1fr)); gap:18px 24px; justify-content:center; padding:16px; background: rgba(0,0,0,0.30); border:1px solid rgba(255,255,255,0.1); border-radius:14px; backdrop-filter: blur(6px); opacity:0; z-index:4; transition: opacity .35s ease, transform .35s ease; }
+    .btn{ user-select:none; cursor:pointer; padding:18px 20px; border-radius:12px; border:1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); font-weight:1000; font-size:20px; text-align:center; }
+    @keyframes slideUp { from { transform: translate(-50%,140%); opacity:0; } to { transform: translate(-50%,0); opacity:1; } }
+
+    /* Fullscreen storm */
+    .storm{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index: 6; }
+    .r{ position:absolute; width:2px; height:28px; background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0)); border-radius:2px; transform: rotate(22deg) translate(0,0); opacity:0.85; will-change: transform; animation: blow var(--dur,1.4s) linear forwards; }
+    @keyframes blow { to { transform: rotate(22deg) translate(-180vw, 180vh); opacity: 0; } }
+
+    /* Defeat overlay + confetti */
+    .defeat{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index: 12; opacity:0; }
+    .defeat.show{ animation: fadeIn .6s ease forwards, fadeOut 1s ease 5.5s forwards; }
+    @keyframes fadeIn { from{ opacity:0; } to{ opacity:1; } }
+    @keyframes fadeOut { to{ opacity:0; } }
+    .defeatText{ font-size: 86px; font-weight: 1000; letter-spacing: 1.6px; text-transform: uppercase; text-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+    .confetti{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index: 11; }
+    .c{ position:absolute; width:10px; height:14px; background: #fff; opacity:.95; will-change: transform; border-radius:2px; }
+    @keyframes fall { to { transform: translateY(120vh) rotate(600deg); opacity: 1; } }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Stream Boss — Пульт</h1>
-
-  <div class="card" id="configError" style="display:none"></div>
-
-  <div class="card">
-    <div id="authBox" style="margin-top:8px">
-      <button id="loginBtn" class="btn good">Войти через Google (админ)</button>
-      <button id="logoutBtn" class="btn muted" style="display:none">Выйти</button>
-      <button id="forkBtn" class="btn" style="display:none">Сделать личную комнату</button>
-      <span id="who" style="opacity:.8;margin-left:8px"></span>
+  <div class="stage" id="stage">
+    <div class="titleOnly" id="titleOnly">
+      <div class="tiny" id="tTiny">СЕЗОН 0 | хеллоуински портал</div>
+      <div class="big" id="tBig">СТОЛКНОВЕНИЕ</div>
     </div>
-    <div class="hint" style="display:flex;align-items:center;gap:8px;">
-      <span class="help" tabindex="0">?
-        <span class="tt">Войдите один раз, чтобы создать комнату и управлять ею. Оверлей читает без входа. Личная комната помогает сохранять свои настройки.</span>
-      </span>
+
+    <div class="boss-card" id="card">
+      <div class="hpArea">
+        <div class="hpBar" id="hpBar"></div>
+        <div class="hpNum" id="hpNum">HP: 500 / 500</div>
+        <div class="floaters" id="floaters"></div>
+      </div>
+      <div class="bossNameUnder" id="bossName">Тунг Тунг Тунг Саур</div>
+      <div class="bossStage">
+        <div class="bossImgWrap" id="bossWrap">
+          <img id="bossImg" class="bossImg" alt="Босс">
+          <div id="bossEmoji" class="bossEmoji">🧠</div>
+        </div>
+      </div>
     </div>
+
+    <div class="buttons" id="buttons">
+      <div class="btn" data-key="1">Осуждающий взгляд — −1 HP</div>
+      <div class="btn" data-key="2">Удар клешней — −5 HP</div>
+      <div class="btn" data-key="3">Две клешни — −10 HP</div>
+      <div class="btn" data-key="4">Призыв дождя — −50 HP</div>
+    </div>
+
+    <div class="storm" id="storm"></div>
+    <div class="confetti" id="confetti"></div>
+    <div class="defeat" id="defeat"><div class="defeatText">БОСС ПОБЕЖДЕН</div></div>
   </div>
 
-  <div class="card">
-    <h1>Быстрые действия</h1>
-    <div>
-      <button class="btn danger" data-dmg="1">Осуждающий взгляд — −1</button>
-      <button class="btn danger" data-dmg="5">Удар клешней — −5</button>
-      <button class="btn danger" data-dmg="10">Две клешни — −10</button>
-      <button class="btn danger" id="stormBtn">Призыв дождя — −50 (авто)</button>
-    </div>
-    <div class="hint">Шторм сам наносит тики урона до −50 HP.</div>
-  </div>
+  <!-- Весь JS внутри module: и логика оверлея, и Firestore -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-  <div class="card">
-    <h1>Параметры</h1>
-    <div class="row">
-      <div>
-        <label>Имя босса</label>
-        <input id="boss" placeholder="Тунг Тунг Тунг Саур">
-      </div>
-      <div>
-        <label>Картинка (URL)</label>
-        <input id="boss_img" placeholder="https://...png">
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label>HP текущие</label>
-        <input id="hp" type="number" min="1" step="1">
-      </div>
-      <div>
-        <label>HP максимум</label>
-        <input id="max" type="number" min="1" step="1">
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label>Подзаголовок</label>
-        <input id="subtitle" placeholder="СЕЗОН 0 | ...">
-      </div>
-      <div>
-        <label>Большой заголовок</label>
-        <input id="titlebig" placeholder="СТОЛКНОВЕНИЕ">
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label>Позиция X (%)</label>
-        <input id="x" type="number" step="0.1">
-      </div>
-      <div>
-        <label>Ширина (px)</label>
-        <input id="w" type="number" min="800" max="1720">
-      </div>
-    </div>
-    <div style="margin-top:10px">
-      <button class="btn good" id="saveBtn">Сохранить</button>
-      <button class="btn muted" id="resetBtn">Сбросить HP</button>
-    </div>
-  </div>
+    // --- Firebase config (тот же, что в пульте) ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
+      authDomain: "mini-app-adventure.firebaseapp.com",
+      projectId: "mini-app-adventure",
+      storageBucket: "mini-app-adventure.firebasestorage.app",
+      messagingSenderId: "537034908749",
+      appId: "1:537034908749:web:26edebdf7d9fa2b42a2804",
+      measurementId: "G-0RF2PPHQN8"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
 
-  <div class="card">
-    <h1>Подключение OBS</h1>
-    <div class="hint">
-      В OBS добавь Browser Source URL:
-      <div><code id="obsUrl"></code></div>
-    </div>
-  </div>
+    // --- Служебки/ссылки на DOM ---
+    const qs = new URLSearchParams(location.search);
+    const els = {
+      stage: document.getElementById('stage'),
+      titleOnly: document.getElementById('titleOnly'),
+      tTiny: document.getElementById('tTiny'),
+      tBig: document.getElementById('tBig'),
+      card: document.getElementById('card'),
+      hpBar: document.getElementById('hpBar'),
+      hpNum: document.getElementById('hpNum'),
+      floaters: document.getElementById('floaters'),
+      bossWrap: document.getElementById('bossWrap'),
+      bossImg: document.getElementById('bossImg'),
+      bossEmoji: document.getElementById('bossEmoji'),
+      bossName: document.getElementById('bossName'),
+      buttons: document.getElementById('buttons'),
+      storm: document.getElementById('storm'),
+      defeat: document.getElementById('defeat'),
+      confetti: document.getElementById('confetti'),
+    };
 
-  <div class="card" id="diag" style="display:none"></div>
-</div>
+    const LS_KEY = 'bossState_v15';
+    function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+    function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+    function load(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){ return null; } }
 
-<!-- ЛОГИКА ПУЛЬТА -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    // --- Параметры запуска / стейт ---
+    const defaults = {
+      boss: qs.get('boss') || 'Тунг Тунг Тунг Саур',
+      max: clamp(parseInt(qs.get('max')) || 500, 1, 999999),
+      subtitle: qs.get('subtitle') || 'СЕЗОН 0 | хеллоуинский портал',
+      titlebig: qs.get('titlebig') || 'СТОЛКНОВЕНИЕ',
+      boss_img: qs.get('boss_img') || 'https://i.imgur.com/hwJZoMX.png',
+      x: parseFloat(qs.get('x')) || 38,
+      w: clamp(parseInt(qs.get('w')) || 1200, 800, 1720),
+      auto_restart: (qs.get('auto_restart') || '0') === '1',
+    };
+    let state = load() || { boss: defaults.boss, max: defaults.max, hp: defaults.max, subtitle: defaults.subtitle, titlebig: defaults.titlebig, x: defaults.x, w: defaults.w, defeated:false };
 
-  // --- Конфиг Firebase (вставлен из консоли) ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
-    authDomain: "mini-app-adventure.firebaseapp.com",
-    projectId: "mini-app-adventure",
-    storageBucket: "mini-app-adventure.firebasestorage.app",
-    messagingSenderId: "537034908749",
-    appId: "1:537034908749:web:26edebdf7d9fa2b42a2804",
-    measurementId: "G-0RF2PPHQN8"
-  };
-
-  // --- Firebase init ---
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const auth = getAuth(app);
-
-  // --- Room & helpers ---
-  const qs = new URLSearchParams(location.search);
-  const selfMode = qs.get('self') === '1';
-  const baseRoom = qs.get('room') || 'demo';
-
-  const $ = (id)=>document.getElementById(id);
-
-  let roomId = baseRoom;
-  let roomRef = doc(db, 'rooms', roomId);
-
-  function setRoom(id){
-    roomId = id;
-    roomRef = doc(db, 'rooms', roomId);
-    if ($('roomTxt')) $('roomTxt').textContent = roomId;
-    if ($('obsUrl')) {
-      const overlayUrl = new URL('./overlay.html', location.href);
-      overlayUrl.search = `room=${encodeURIComponent(roomId)}&remote_only=1`;
-      $('obsUrl').textContent = overlayUrl.toString();
+    function applyLayout(){
+      els.card.style.left = (state.x || 38) + '%';
+      els.card.style.width = (state.w || 1200) + 'px';
+      const rect = els.card.getBoundingClientRect();
+      els.buttons.style.left = (rect.left + rect.width/2) + 'px';
     }
-  }
-  setRoom(roomId);
 
-  const inputs = ['boss','boss_img','hp','max','subtitle','titlebig','x','w']
-    .reduce((acc,id)=>(acc[id]=$(id),acc),{});
+    function render(){
+      els.bossName.textContent = state.boss;
+      els.tTiny.textContent = state.subtitle;
+      els.tBig.textContent = state.titlebig;
+      const ratio = clamp(state.hp / state.max, 0, 1);
+      els.hpBar.style.setProperty('--hp', ratio);
+      els.hpNum.textContent = `HP: ${state.hp} / ${state.max}`;
+      els.bossImg.src = defaults.boss_img || '';
+      els.bossImg.style.display = 'block';
+      els.bossEmoji.style.display = 'none';
+      applyLayout();
+      save();
+    }
 
-  // --- Auth ---
-  const provider = new GoogleAuthProvider();
-  if ($('loginBtn')) $('loginBtn').onclick = ()=> signInWithPopup(auth, provider).catch(console.error);
-  if ($('logoutBtn')) $('logoutBtn').onclick = ()=> signOut(auth);
+    function floater(txt, isNeg){
+      const n = document.createElement('div');
+      n.className = 'floater' + (isNeg ? ' neg' : '');
+      n.textContent = txt;
+      n.style.left = (10 + Math.random()*80) + '%';
+      n.style.top = (20 + Math.random()*50) + '%';
+      els.floaters.appendChild(n);
+      setTimeout(()=> n.remove(), 900);
+    }
 
-  onAuthStateChanged(auth, async (user)=>{
-    if ($('who')) $('who').textContent = user ? `Вошёл: ${user.displayName||user.email}` : '';
-    if ($('loginBtn')) $('loginBtn').style.display = user ? 'none' : 'inline-block';
-    if ($('logoutBtn')) $('logoutBtn').style.display = user ? 'inline-block' : 'none';
-    if ($('forkBtn')) $('forkBtn').style.display = user ? 'inline-block' : 'none';
+    function bossHit(){
+      els.bossWrap.classList.remove('bossHit'); void els.bossWrap.offsetWidth;
+      els.bossWrap.classList.add('bossHit');
+      setTimeout(()=> els.bossWrap.classList.remove('bossHit'), 300);
+    }
 
-    if (!user) return;
+    function damage(d){
+      if(state.defeated) return;
+      const before = state.hp;
+      state.hp = clamp(state.hp - Math.abs(d), 0, state.max);
+      render();
+      floater(`-${Math.abs(d)}`, false);
+      if(state.hp > 0) bossHit();
+      if(before > 0 && state.hp === 0){ triggerDefeat(); }
+    }
 
-    // SELF MODE: у каждого своя комната u_XXXXXXXX
-    if (selfMode) {
-      const myRoom = `u_${user.uid.slice(0,8)}`;
-      setRoom(myRoom);
+    // Storm control
+    let stormEndTimeout = null;
+    let stormDropsInterval = null;
+    let stormDamageInterval = null;
 
-      const snap = await getDoc(roomRef);
-      if (!snap.exists()) {
-        // Берём за образец базовую комнату (если есть), иначе дефолт
-        let base = null;
-        try { const baseSnap = await getDoc(doc(db,'rooms', baseRoom)); base = baseSnap.exists() ? baseSnap.data() : null; } catch(_){}
-        const defaults = base || {
-          boss: 'Тунг Тунг Тунг Саур', boss_img: 'https://i.imgur.com/hwJZoMX.png',
-          max: 500, hp: 500, subtitle: 'СЕЗОН 0 | хеллоуинский портал', titlebig: 'СТОЛКНОВЕНИЕ',
-          x: 38, w: 1200, auto_restart: false, defeated: false, public: true
-        };
-        await setDoc(roomRef, { ...defaults, owner: user.uid, admins: [user.uid], createdAt: serverTimestamp() });
-      } else {
-        const d = snap.data();
-        const ops = {};
-        if (!d.owner) ops.owner = user.uid;
-        if (!Array.isArray(d.admins) || !d.admins.includes(user.uid)) ops.admins = (Array.isArray(d.admins) ? [...d.admins, user.uid] : [user.uid]);
-        if (Object.keys(ops).length) await updateDoc(roomRef, ops);
+    function stopStorm(){
+      if(stormEndTimeout){ clearTimeout(stormEndTimeout); stormEndTimeout = null; }
+      if(stormDropsInterval){ clearInterval(stormDropsInterval); stormDropsInterval = null; }
+      if(stormDamageInterval){ clearInterval(stormDamageInterval); stormDamageInterval = null; }
+      els.storm.innerHTML = '';
+    }
+
+    function spawnDrops(count){
+      for(let i=0;i<count;i++){
+        const d = document.createElement('div');
+        d.className = 'r';
+        const startTop = -30 + Math.random()*160;
+        const startLeft = 100 + Math.random()*40;
+        d.style.top = startTop + '%';
+        d.style.left = startLeft + '%';
+        d.style.height = (16 + Math.random()*36) + 'px';
+        d.style.setProperty('--dur', (1.0 + Math.random()*1.8) + 's');
+        d.style.opacity = (0.35 + Math.random()*0.65).toFixed(2);
+        els.storm.appendChild(d);
+        setTimeout(()=> d.remove(), 3000);
       }
-      return; // не трогаем общую комнату
     }
 
-    // ОБЩАЯ КОМНАТА (как раньше): создаём при первом заходе
-    const snap = await getDoc(roomRef);
-    if (!snap.exists()) {
-      const defaults = {
-        boss: 'Тунг Тунг Тунг Саур', boss_img: 'https://i.imgur.com/hwJZoMX.png',
-        max: 500, hp: 500, subtitle: 'СЕЗОН 0 | хеллоуинский портал', titlebig: 'СТОЛКНОВЕНИЕ',
-        x: 38, w: 1200, auto_restart: false, defeated: false, public: true,
-        owner: user.uid, admins: [user.uid], createdAt: serverTimestamp()
-      };
-      await setDoc(roomRef, defaults);
-    } else {
+    function startStorm(){
+      if(state.defeated) return;
+      stopStorm();
+      spawnDrops(260);
+      stormDropsInterval = setInterval(()=> spawnDrops(180), 180);
+      let remaining = 50;
+      stormDamageInterval = setInterval(()=>{
+        if(remaining <= 0 || state.hp <= 0){
+          clearInterval(stormDamageInterval); stormDamageInterval = null;
+          return;
+        }
+        let tick = (Math.random() < 0.5) ? 1 : 2;
+        if(tick > remaining) tick = remaining;
+        damage(tick);
+        remaining -= tick;
+      }, 100);
+      stormEndTimeout = setTimeout(()=>{ stopStorm(); }, 5000);
+    }
+
+    function clearAnim(el){
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = '';
+    }
+
+    // Confetti
+    const CONF_COLS = ['#ff6b6b','#ffd93d','#6bcB77','#4D96FF','#B892FF','#FF8FAB','#F8F9FA'];
+    function spawnConfetti(n){
+      for(let i=0;i<n;i++){
+        const piece = document.createElement('div');
+        piece.className = 'c';
+        const x = Math.random()*100;
+        const delay = Math.random()*0.4;
+        const dur = 1.8 + Math.random()*1.8;
+        const clr = CONF_COLS[(Math.random()*CONF_COLS.length)|0];
+        const size = 8 + Math.random()*10;
+        piece.style.left = x + '%';
+        piece.style.top = (-10 + Math.random()*10) + '%';
+        piece.style.background = clr;
+        piece.style.width = size + 'px';
+        piece.style.height = (size*1.2) + 'px';
+        piece.style.transform = `translateY(-20px) rotate(${Math.random()*360}deg)`;
+        piece.style.animation = `fall ${dur}s ease-in ${delay}s forwards`;
+        els.confetti.appendChild(piece);
+        setTimeout(()=> piece.remove(), (dur+delay+0.2)*1000);
+      }
+    }
+
+    function triggerDefeat(){
+      state.defeated = true; save();
+      stopStorm();
+      // clear animations that might hold final states
+      clearAnim(els.buttons); clearAnim(els.bossWrap); clearAnim(els.card);
+      // hide boss, buttons, and whole card
+      els.bossWrap.style.transition = 'transform .35s ease, opacity .35s ease';
+      els.bossWrap.style.transform = 'scale(.85) translateY(-12px)';
+      els.bossWrap.style.opacity = '0';
+      els.buttons.style.transition = 'opacity .35s ease, transform .35s ease';
+      els.buttons.style.opacity = '0';
+      els.buttons.style.transform = 'translate(-50%,140%)';
+      els.buttons.style.pointerEvents = 'none';
+      els.card.style.opacity = '0.0';
+      els.card.style.transform = 'translate(-50%,-18px)';
+      // after short pause — banner + confetti
+      setTimeout(()=>{
+        els.defeat.classList.remove('show'); void els.defeat.offsetWidth;
+        els.defeat.classList.add('show');
+        spawnConfetti(260);
+        const confTimer = setInterval(()=> spawnConfetti(140), 300);
+        setTimeout(()=> clearInterval(confTimer), 3000);
+      }, 450);
+
+      // auto-restart after overlay fades
+      if(defaults.auto_restart){
+        setTimeout(()=>{
+          state.hp = state.max; state.defeated = false; save();
+          playIntro();
+        }, 6200);
+      }
+    }
+
+    function applyQuery(){
+      const name = qs.get('boss');
+      const max = qs.get('max');
+      const subtitle = qs.get('subtitle');
+      const titlebig = qs.get('titlebig');
+      const img = qs.get('boss_img');
+      const x = qs.get('x');
+      const w = qs.get('w');
+      const ar = qs.get('auto_restart');
+      if(name) state.boss = decodeURIComponent(name);
+      if(max) state.max = clamp(parseInt(max)||state.max, 1, 999999);
+      if(subtitle) state.subtitle = decodeURIComponent(subtitle);
+      if(titlebig) state.titlebig = decodeURIComponent(titlebig);
+      if(img) { defaults.boss_img = img; }
+      if(x){ state.x = parseFloat(x) || state.x; }
+      if(w){ state.w = clamp(parseInt(w)||state.w, 800, 1720); }
+      if(ar !== null){ defaults.auto_restart = (ar === '1'); }
+      if(state.hp > state.max) state.hp = state.max;
+    }
+
+    // DIGITS ONLY 1..4 — навешиваем обработчик отдельно, чтобы можно было отключить
+    function keyHandler(e){
+      const k = e.key;
+      if(k==='1'){ damage(1); }
+      if(k==='2'){ damage(5); }
+      if(k==='3'){ damage(10); }
+      if(k==='4'){ startStorm(); }
+    }
+
+    els.buttons.addEventListener('click', (e)=>{
+      const b = e.target.closest('.btn'); if(!b) return;
+      const k = b.dataset.key;
+      keyHandler({key:k});
+    });
+
+    function playIntro(){
+      stopStorm();
+      els.defeat.classList.remove('show');
+      els.confetti.innerHTML = '';
+      els.card.style.opacity = '1';
+      els.card.style.transform = 'translate(-50%,0)';
+      els.bossWrap.style.opacity = '1';
+      els.buttons.style.opacity = '1';
+      els.buttons.style.transform = 'translate(-50%,0)';
+      els.buttons.style.pointerEvents = 'auto';
+      // reset HP at the start of a new round
+      if(state.hp <= 0){ state.hp = state.max; }
+      state.defeated = false; save();
+      render();
+
+      els.titleOnly.classList.remove('titlePlay');
+      els.card.style.animation = 'none'; els.buttons.style.animation = 'none';
+      els.card.style.opacity = '0'; els.buttons.style.opacity = '0';
+      els.card.style.transform = 'translate(-50%,-140%)'; els.buttons.style.transform = 'translate(-50%,140%)';
+      els.card.style.pointerEvents = 'none'; els.buttons.style.pointerEvents = 'none';
+      els.tTiny.textContent = state.subtitle; els.tBig.textContent = state.titlebig;
+      requestAnimationFrame(()=>{ els.titleOnly.classList.add('titlePlay'); });
+      setTimeout(()=>{
+        els.card.style.animation = 'cardDown 650ms ease forwards';
+        setTimeout(()=>{
+          els.card.style.transform = 'translate(-50%,0)'; els.card.style.opacity = '1';
+          els.bossWrap.style.animation = 'dropIn 650ms ease forwards';
+          setTimeout(()=>{ els.bossWrap.style.animation = ''; els.bossWrap.style.opacity = '1'; }, 700);
+          applyLayout();
+        }, 650);
+        els.buttons.style.animation = 'slideUp 650ms ease forwards';
+        setTimeout(()=>{ els.card.style.pointerEvents = 'auto'; els.buttons.style.pointerEvents = 'auto'; }, 700);
+      }, 7500);
+    }
+
+    window.addEventListener('resize', applyLayout);
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible'){ playIntro(); }
+    });
+
+    // --- Init overlay ---
+    applyQuery();
+    render();
+    playIntro();
+
+    // --- Режим для OBS: кнопки видны, но НЕ кликабельны; хоткеи отключены ---
+    const remoteOnly = qs.get('remote_only') === '1';
+    if(remoteOnly){
+      els.buttons.style.pointerEvents = 'none';
+    }else{
+      document.addEventListener('keydown', keyHandler);
+    }
+
+    // --- Firestore Live Sync ---
+    const roomId = qs.get('room') || 'demo';
+    const roomRef = doc(db, 'rooms', roomId);
+
+    let lastCmdAt = 0;
+    onSnapshot(roomRef, (snap) => {
+      if (!snap.exists()) return;
       const d = snap.data();
-      if (Array.isArray(d.admins) && !d.admins.includes(user.uid)) {
-        try { await updateDoc(roomRef, { admins: [...d.admins, user.uid] }); } catch(e) { /* правило может запретить — ок */ }
+
+      // патчим состояние/оформление
+      const fields = ['boss','max','hp','subtitle','titlebig','x','w','defeated','auto_restart','boss_img'];
+      for (const k of fields) {
+        if (d[k] !== undefined) {
+          if (k === 'boss_img') { defaults.boss_img = d[k]; }
+          else { state[k] = d[k]; }
+        }
       }
-      if (!d.owner) { try { await updateDoc(roomRef, { owner: user.uid }); } catch(_){} }
-    }
-  });
+      if (state.hp > state.max) state.hp = state.max;
+      render();
 
-  // --- Live sync формы ---
-  onSnapshot(roomRef, (snap)=>{
-    if (!snap.exists()) return;
-    const d = snap.data();
-    for (const k in inputs) if (inputs[k] && d[k] !== undefined) inputs[k].value = d[k];
-  });
-
-  // --- Сохранить параметры ---
-  if ($('saveBtn')) $('saveBtn').onclick = async ()=>{
-    const patch = {};
-    for (const k in inputs) {
-      let v = inputs[k]?.value;
-      if (v === undefined) continue;
-      if (['hp','max','x','w'].includes(k)) v = Number(v);
-      patch[k] = v;
-    }
-    await updateDoc(roomRef, patch);
-    await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
-  };
-
-  // --- Быстрый урон ---
-  document.querySelectorAll('[data-dmg]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const n = Number(btn.dataset.dmg)||0;
-      await updateDoc(roomRef, { cmd: { type:'damage', amount:n, at: serverTimestamp() } });
+      // команды
+      const cmd = d.cmd;
+      const ts = cmd && cmd.at && typeof cmd.at.toMillis === 'function' ? cmd.at.toMillis() : 0;
+      if (ts && ts > lastCmdAt) {
+        lastCmdAt = ts;
+        if (cmd.type === 'damage') damage(Math.abs(cmd.amount || 0));
+        if (cmd.type === 'storm')  startStorm();
+        if (cmd.type === 'set' && cmd.patch){
+          Object.assign(state, cmd.patch||{});
+          render();
+        }
+      }
     });
-  });
-
-  // --- Шторм ---
-  if ($('stormBtn')) $('stormBtn').onclick = async ()=>{
-    await updateDoc(roomRef, { cmd: { type:'storm', at: serverTimestamp() } });
-  };
-
-  // --- Сброс HP ---
-  if ($('resetBtn')) $('resetBtn').onclick = async ()=>{
-    const snap = await getDoc(roomRef);
-    const d = snap.data();
-    const max = d?.max ?? 500;
-    await updateDoc(roomRef, { hp: max, defeated: false, cmd: { type:'set', patch:{hp:max, defeated:false}, at: serverTimestamp() } });
-  };
-
-  // --- Fork: создать личную комнату из текущей ---
-  if ($('forkBtn')) $('forkBtn').onclick = async ()=>{
-    const user = auth.currentUser; if (!user) return alert('Сначала войдите');
-    const myRoom = `u_${user.uid.slice(0,8)}`;
-    // берём текущие значения как шаблон
-    let base = null;
-    try { const snap = await getDoc(roomRef); base = snap.exists() ? snap.data() : null; } catch(_){}
-    const newRef = doc(db,'rooms', myRoom);
-    await setDoc(newRef, {
-      ...(base || {
-        boss: 'Тунг Тунг Тунг Саур', boss_img: 'https://i.imgur.com/hwJZoMX.png',
-        max: 500, hp: 500, subtitle: 'СЕЗОН 0 | хеллоуинский портал', titlebig: 'СТОЛКНОВЕНИЕ',
-        x: 38, w: 1200, auto_restart: false, defeated: false, public: true
-      }),
-      owner: user.uid, admins: [user.uid], createdAt: serverTimestamp()
-    });
-    setRoom(myRoom);
-    alert('Личная комната создана. Ссылка для OBS обновлена выше.');
-  };
-
-  // --- Диагностика (включается ?debug=1) ---
-  if (qs.get('debug') === '1'){
-    const box = document.getElementById('diag');
-    box.style.display = 'block';
-    box.innerHTML = `<h1>Диагностика</h1><div class="hint mono">projectId: ${firebaseConfig.projectId}</div><div class="hint mono">roomId: ${roomId}</div>`;
-    try{
-      const test = await getDoc(roomRef);
-      box.innerHTML += `<div class="hint">Firestore доступен: <b>${test ? 'OK' : 'нет данных'}</b></div>`;
-    }catch(e){
-      box.innerHTML += `<div class="hint" style="color:var(--red)">Ошибка Firestore: ${e.message}</div>`;
-    }
-  }
-</script>
+  </script>
 </body>
 </html>
