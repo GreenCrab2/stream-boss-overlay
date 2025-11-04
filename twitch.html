@@ -5,8 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <body style="background:#0f0f14;color:#fff;font-family:system-ui;padding:16px">
   <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+    <!-- Twitch -->
     <button id="login"   style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer">Войти в Twitch</button>
     <button id="logout"  style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer">Сбросить токен</button>
+
+    <!-- Firebase Auth -->
+    <span style="width:18px"></span>
+    <button id="gLogin"  style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer">Войти в Google</button>
+    <button id="gLogout" style="padding:8px 12px;border-radius:8px;border:1px solid #3b3b48;background:#2b2b36;color:#fff;cursor:pointer;display:none">Выйти из Google</button>
+    <span id="fbWho" style="opacity:.85;align-self:center"></span>
   </div>
   <pre id="log" style="white-space:pre-wrap;line-height:1.4"></pre>
 
@@ -31,7 +38,7 @@ const FIREBASE_CONFIG = {
 
 const log = (...a)=>{ const n=document.getElementById('log'); n.textContent += a.join(' ') + '\n'; };
 
-// ───────────── Implicit Grant: токен из #hash ─────────────
+// ───────────── Implicit Grant (Twitch) ─────────────
 function parseHashToken(){
   if (!location.hash) return null;
   const p = new URLSearchParams(location.hash.slice(1));
@@ -57,8 +64,50 @@ function startImplicit(){
 document.getElementById('login').onclick  = ()=> startImplicit();
 document.getElementById('logout').onclick = ()=>{
   sessionStorage.removeItem('tw_access_token');
-  log('Токен очищен. Нажми «Войти в Twitch».');
+  log('Токен Twitch очищен. Нажми «Войти в Twitch».');
 };
+
+// ───────────── Firebase lazy init + Auth UI ─────────────
+let fb=null;
+async function ensureFirebase(){
+  if (fb) return fb;
+  const appMod  = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+  const authMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+  const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+
+  const app = appMod.initializeApp(FIREBASE_CONFIG);
+  const auth = authMod.getAuth(app);
+  await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+
+  const db = fsMod.getFirestore(app);
+
+  const $ = id=>document.getElementById(id);
+  const who = $('fbWho'), gLogin=$('gLogin'), gLogout=$('gLogout');
+
+  authMod.onAuthStateChanged(auth, (user)=>{
+    if (user){
+      who.textContent = `Вошли в Google: ${user.displayName || user.email}`;
+      gLogin.style.display='none';
+      gLogout.style.display='inline-block';
+    } else {
+      who.textContent = 'Не вошли в Google (для записи в комнату требуется вход админом).';
+      gLogin.style.display='inline-block';
+      gLogout.style.display='none';
+    }
+  });
+
+  gLogin.onclick = async ()=>{
+    try{
+      const prov = new authMod.GoogleAuthProvider();
+      prov.setCustomParameters({ prompt:'select_account' });
+      await authMod.signInWithPopup(auth, prov);
+    }catch(e){ log('Firebase auth error:', e.message); }
+  };
+  gLogout.onclick = ()=> authMod.signOut(auth);
+
+  fb = { app, auth, ...authMod, db, ...fsMod };
+  return fb;
+}
 
 // ───────────── Helix utils ─────────────
 async function fetchUser(accessToken){
@@ -118,7 +167,7 @@ async function subscribeEvent(accessToken, type, condition){
   if(!r.ok){ log('EventSub subscribe error:', await r.text()); }
 }
 
-// ───────────── PubSub WebSocket (fallback/дополнение) ─────────────
+// ───────────── PubSub WebSocket (дополнение) ─────────────
 let psWs, psPing;
 function connectPubSub(accessToken, broadcasterId){
   psWs = new WebSocket('wss://pubsub-edge.twitch.tv');
@@ -133,7 +182,6 @@ function connectPubSub(accessToken, broadcasterId){
       }
     };
     psWs.send(JSON.stringify(msg));
-    // keepalive
     psPing = setInterval(()=> psWs?.readyState===1 && psWs.send(JSON.stringify({type:'PING'})), 4*60*1000);
   };
   psWs.onclose = ()=>{
@@ -151,9 +199,7 @@ function connectPubSub(accessToken, broadcasterId){
 
     if (data.type === 'MESSAGE' && data.data?.topic?.startsWith('channel-points-channel-v1.')){
       try{
-        const inner = JSON.parse(data.data.message); // строка с JSON внутри
-        // Типы бывают разные; для редемпов чаще "reward-redeemed"
-        // https://dev.twitch.tv/docs/pubsub#topics
+        const inner = JSON.parse(data.data.message);
         const redemption = inner?.data?.redemption;
         const title = redemption?.reward?.title;
         if (title){
@@ -163,30 +209,40 @@ function connectPubSub(accessToken, broadcasterId){
                                 .catch(e=>log('Trigger error (PubSub):', e.message));
           }
         }
-      }catch(e){
-        // иногда попадают другие типы сообщений
-      }
+      }catch{}
     }
   };
 }
 
 // ───────────── Firestore: случайный из первых 5 ─────────────
 async function triggerRandomSkill(){
-  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
-  const { getFirestore, doc, getDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+  const { db, doc, getDoc, updateDoc, serverTimestamp, auth } = await (async ()=> {
+    const x = await ensureFirebase();
+    return { 
+      db: x.db, doc: x.doc, getDoc: x.getDoc, updateDoc: x.updateDoc, serverTimestamp: x.serverTimestamp,
+      auth: x.auth
+    };
+  })();
 
-  const app = initializeApp(FIREBASE_CONFIG);
-  const db  = getFirestore(app);
+  try{
+    const ref  = doc(db,'rooms',ROOM_ID);
+    const snap = await getDoc(ref);
+    if(!snap.exists()) throw new Error('room not found');
+    const d = snap.data();
+    const list = (d.actions||[]).slice(0,5).filter(x=>x?.label && Number(x?.dmg)>0);
+    if(!list.length) throw new Error('no actions configured');
 
-  const ref  = doc(db,'rooms',ROOM_ID);
-  const snap = await getDoc(ref);
-  if(!snap.exists()) throw new Error('room not found');
-  const d = snap.data();
-  const list = (d.actions||[]).slice(0,5).filter(x=>x?.label && Number(x?.dmg)>0);
-  if(!list.length) throw new Error('no actions configured');
-
-  const pick = list[Math.floor(Math.random()*list.length)];
-  await updateDoc(ref, { cmd: { type:'damage', amount:Number(pick.dmg)||0, at: serverTimestamp() } });
+    const pick = list[Math.floor(Math.random()*list.length)];
+    await updateDoc(ref, { cmd: { type:'damage', amount:Number(pick.dmg)||0, at: serverTimestamp() } });
+  }catch(e){
+    // типичная ошибка прав: permission-denied
+    if (/permission/i.test(e.message) || /missing/i.test(e.message)){
+      log('Нет прав писать в комнату. Войдите в Google под админом комнаты и попробуйте снова.');
+    } else {
+      log('Firestore error:', e.message);
+    }
+    throw e;
+  }
 }
 
 // ───────────── boot ─────────────
@@ -194,24 +250,27 @@ async function triggerRandomSkill(){
   try{
     log('REDIRECT_URI:', REDIRECT_URI);
 
-    // 1) если вернулись с #access_token — сохраним его
+    // Firebase UI и слушатель статуса — инициализируем сразу (лениво)
+    ensureFirebase().catch(e=>log('Firebase init error:', e.message));
+
+    // Twitch токен из #hash
     const fromHash = parseHashToken();
     if (fromHash){
       sessionStorage.setItem('tw_access_token', fromHash);
     }
 
-    // 2) читаем токен из sessionStorage
     const accessToken = sessionStorage.getItem('tw_access_token');
     if (!accessToken){
-      log('Токен не найден. Нажми «Войти в Twitch».');
+      log('Токен Twitch не найден. Нажми «Войти в Twitch».');
       return;
     }
 
-    // 3) получим данные канала и подрубим оба канала событий
     const user = await fetchUser(accessToken);
     log('Twitch:', user.display_name, `(id ${user.id})`);
+
     await connectEventSub(accessToken, user.id);
     connectPubSub(accessToken, user.id);
+
     log(`Готово: ждём редемпы «${REWARD_TITLE}» …`);
   }catch(e){
     log('Ошибка:', e.message);
