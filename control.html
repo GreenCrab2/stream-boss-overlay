@@ -23,23 +23,10 @@
     .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
     .error{border-color:#8a4b5f}
     .error h1{color:var(--red)}
-
-    /* Help tooltip */
-    .help{
-      display:inline-flex;align-items:center;justify-content:center;
-      width:20px;height:20px;border-radius:50%;
-      background:#2b2b36;border:1px solid #3b3b48;color:#fff;
-      font-weight:800;font-size:12px;cursor:help;position:relative
-    }
-    .help .tt{
-      position:absolute;left:26px;top:50%;
-      transform:translateY(-50%) translateY(4px);
-      background:#0c0c10;border:1px solid #2a2a33;color:#f2f2f7;
-      padding:10px 12px;border-radius:10px;min-width:260px;max-width:360px;
-      font-size:12px;line-height:1.35;box-shadow:0 8px 30px rgba(0,0,0,.45);
-      opacity:0;pointer-events:none;transition:opacity .15s ease, transform .15s ease;z-index:20
-    }
-    .help:hover .tt,.help:focus .tt{ opacity:1; transform:translateY(-50%); }
+    /* ? tooltip */
+    .help{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2b2b36;border:1px solid #3b3b48;color:#fff;font-weight:800;font-size:12px;cursor:help;position:relative}
+    .help .tt{position:absolute;left:26px;top:50%;transform:translateY(-50%) translateY(4px);background:#0c0c10;border:1px solid #2a2a33;color:#f2f2f7;padding:10px 12px;border-radius:10px;min-width:260px;max-width:360px;font-size:12px;line-height:1.35;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .15s ease, transform .15s ease;z-index:20}
+    .help:hover .tt,.help:focus .tt{opacity:1;transform:translateY(-50%)}
   </style>
 </head>
 <body>
@@ -52,7 +39,6 @@
     <div id="authBox" style="margin-top:8px; display:flex; align-items:center; gap:10px;">
       <button id="loginBtn" class="btn good">Войти через Google (админ)</button>
       <button id="logoutBtn" class="btn muted" style="display:none">Выйти</button>
-      <button id="forkBtn" class="btn" style="display:none">Сделать личную комнату</button>
       <span id="who" style="opacity:.8;"></span>
     </div>
     <div class="hint" style="display:flex;align-items:center;gap:8px;">
@@ -79,44 +65,20 @@
   <div class="card">
     <h1>Параметры</h1>
     <div class="row">
-      <div>
-        <label>Имя босса</label>
-        <input id="boss" placeholder="Тунг Тунг Тунг Саур">
-      </div>
-      <div>
-        <label>Картинка (URL)</label>
-        <input id="boss_img" placeholder="https://...png">
-      </div>
+      <div><label>Имя босса</label><input id="boss" placeholder="Тунг Тунг Тунг Саур"></div>
+      <div><label>Картинка (URL)</label><input id="boss_img" placeholder="https://...png"></div>
     </div>
     <div class="row">
-      <div>
-        <label>HP текущие</label>
-        <input id="hp" type="number" min="1" step="1">
-      </div>
-      <div>
-        <label>HP максимум</label>
-        <input id="max" type="number" min="1" step="1">
-      </div>
+      <div><label>HP текущие</label><input id="hp" type="number" min="1" step="1"></div>
+      <div><label>HP максимум</label><input id="max" type="number" min="1" step="1"></div>
     </div>
     <div class="row">
-      <div>
-        <label>Подзаголовок</label>
-        <input id="subtitle" placeholder="СЕЗОН 0 | ...">
-      </div>
-      <div>
-        <label>Большой заголовок</label>
-        <input id="titlebig" placeholder="СТОЛКНОВЕНИЕ">
-      </div>
+      <div><label>Подзаголовок</label><input id="subtitle" placeholder="СЕЗОН 0 | ..."></div>
+      <div><label>Большой заголовок</label><input id="titlebig" placeholder="СТОЛКНОВЕНИЕ"></div>
     </div>
     <div class="row">
-      <div>
-        <label>Позиция X (%)</label>
-        <input id="x" type="number" step="0.1">
-      </div>
-      <div>
-        <label>Ширина (px)</label>
-        <input id="w" type="number" min="800" max="1720">
-      </div>
+      <div><label>Позиция X (%)</label><input id="x" type="number" step="0.1"></div>
+      <div><label>Ширина (px)</label><input id="w" type="number" min="800" max="1720"></div>
     </div>
     <div style="margin-top:10px">
       <button class="btn good" id="saveBtn">Сохранить</button>
@@ -135,13 +97,12 @@
   <div class="card" id="diag" style="display:none"></div>
 </div>
 
-<!-- ЛОГИКА ПУЛЬТА -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  // --- Конфиг Firebase (из консоли) ---
+  // Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
     authDomain: "mini-app-adventure.firebaseapp.com",
@@ -151,24 +112,20 @@
     appId: "1:537034908749:web:26edebdf7d9fa2b42a2804",
     measurementId: "G-0RF2PPHQN8"
   };
-
-  // --- Firebase init ---
   const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  const db  = getFirestore(app);
   const auth = getAuth(app);
 
-  // --- Room & helpers ---
-  const qs = new URLSearchParams(location.search);
-  const selfMode = qs.get('self') === '1';
-  const baseRoom = qs.get('room') || 'demo';
-
+  // Helpers
+  const qs       = new URLSearchParams(location.search);
+  const baseRoom = qs.get('room') || 'demo';          // общая по умолчанию
   const $ = (id)=>document.getElementById(id);
 
-  let roomId = baseRoom;
+  let roomId  = baseRoom;
   let roomRef = doc(db, 'rooms', roomId);
 
   function setRoom(id){
-    roomId = id;
+    roomId  = id;
     roomRef = doc(db, 'rooms', roomId);
     if ($('obsUrl')) {
       const overlayUrl = new URL('./overlay.html', location.href);
@@ -181,73 +138,52 @@
   const inputs = ['boss','boss_img','hp','max','subtitle','titlebig','x','w']
     .reduce((acc,id)=>(acc[id]=$(id),acc),{});
 
-  // --- Auth ---
+  // Auth
   const provider = new GoogleAuthProvider();
-  if ($('loginBtn')) $('loginBtn').onclick = ()=> signInWithPopup(auth, provider).catch(console.error);
-  if ($('logoutBtn')) $('logoutBtn').onclick = ()=> signOut(auth);
+  $('loginBtn')?.addEventListener('click', ()=> signInWithPopup(auth, provider).catch(console.error));
+  $('logoutBtn')?.addEventListener('click', ()=> signOut(auth));
 
   onAuthStateChanged(auth, async (user)=>{
-    if ($('who')) $('who').textContent = user ? `Вошёл: ${user.displayName||user.email}` : '';
-    if ($('loginBtn')) $('loginBtn').style.display = user ? 'none' : 'inline-block';
-    if ($('logoutBtn')) $('logoutBtn').style.display = user ? 'inline-block' : 'none';
-    if ($('forkBtn')) $('forkBtn').style.display = user ? 'inline-block' : 'none';
+    $('who').textContent = user ? `Вошёл: ${user.displayName||user.email}` : '';
+    $('loginBtn').style.display  = user ? 'none' : 'inline-block';
+    $('logoutBtn').style.display = user ? 'inline-block' : 'none';
 
-    if (!user) return;
+    // без логина — всегда общая
+    if (!user) { setRoom(baseRoom); return; }
 
-    // SELF MODE: у каждого своя комната u_XXXXXXXX
-    if (selfMode) {
-      const myRoom = `u_${user.uid.slice(0,8)}`;
-      setRoom(myRoom);
+    // с логином — автоматически личная u_XXXXXXXX
+    const myRoom = `u_${user.uid.slice(0,8)}`;
+    setRoom(myRoom);
 
-      const snap = await getDoc(roomRef);
-      if (!snap.exists()) {
-        // Берём шаблон из baseRoom (если есть), иначе дефолт
-        let base = null;
-        try { const baseSnap = await getDoc(doc(db,'rooms', baseRoom)); base = baseSnap.exists() ? baseSnap.data() : null; } catch(_){}
-        const defaults = base || {
-          boss: 'Тунг Тунг Тунг Саур', boss_img: 'https://i.imgur.com/hwJZoMX.png',
-          max: 500, hp: 500, subtitle: 'СЕЗОН 0 | хеллоуинский портал', titlebig: 'СТОЛКНОВЕНИЕ',
-          x: 38, w: 1200, auto_restart: false, defeated: false, public: true
-        };
-        await setDoc(roomRef, { ...defaults, owner: user.uid, admins: [user.uid], createdAt: serverTimestamp() });
-      } else {
-        const d = snap.data();
-        const ops = {};
-        if (!d.owner) ops.owner = user.uid;
-        if (!Array.isArray(d.admins) || !d.admins.includes(user.uid)) ops.admins = (Array.isArray(d.admins) ? [...d.admins, user.uid] : [user.uid]);
-        if (Object.keys(ops).length) await updateDoc(roomRef, ops);
-      }
-      return; // не трогаем общую комнату
-    }
-
-    // ОБЩАЯ КОМНАТА (как раньше): создаём при первом заходе
+    // создать если нет (копируя общую как шаблон)
     const snap = await getDoc(roomRef);
     if (!snap.exists()) {
-      const defaults = {
+      let base = null;
+      try { const bs = await getDoc(doc(db,'rooms', baseRoom)); base = bs.exists() ? bs.data() : null; } catch(_){}
+      const defaults = base || {
         boss: 'Тунг Тунг Тунг Саур', boss_img: 'https://i.imgur.com/hwJZoMX.png',
         max: 500, hp: 500, subtitle: 'СЕЗОН 0 | хеллоуинский портал', titlebig: 'СТОЛКНОВЕНИЕ',
-        x: 38, w: 1200, auto_restart: false, defeated: false, public: true,
-        owner: user.uid, admins: [user.uid], createdAt: serverTimestamp()
+        x: 38, w: 1200, auto_restart: false, defeated: false, public: true
       };
-      await setDoc(roomRef, defaults);
+      await setDoc(roomRef, { ...defaults, owner: user.uid, admins: [user.uid], createdAt: serverTimestamp() });
     } else {
       const d = snap.data();
-      if (Array.isArray(d.admins) && !d.admins.includes(user.uid)) {
-        try { await updateDoc(roomRef, { admins: [...d.admins, user.uid] }); } catch(e) { /* правило может запретить — ок */ }
-      }
-      if (!d.owner) { try { await updateDoc(roomRef, { owner: user.uid }); } catch(_){} }
+      const ops = {};
+      if (!d.owner) ops.owner = user.uid;
+      if (!Array.isArray(d.admins) || !d.admins.includes(user.uid)) ops.admins = (Array.isArray(d.admins) ? [...d.admins, user.uid] : [user.uid]);
+      if (Object.keys(ops).length) await updateDoc(roomRef, ops);
     }
   });
 
-  // --- Live sync формы ---
+  // Live sync формы
   onSnapshot(roomRef, (snap)=>{
     if (!snap.exists()) return;
     const d = snap.data();
     for (const k in inputs) if (inputs[k] && d[k] !== undefined) inputs[k].value = d[k];
   });
 
-  // --- Сохранить параметры ---
-  if ($('saveBtn')) $('saveBtn').onclick = async ()=>{
+  // Сохранение параметров
+  $('saveBtn')?.addEventListener('click', async ()=>{
     const patch = {};
     for (const k in inputs) {
       let v = inputs[k]?.value;
@@ -257,9 +193,9 @@
     }
     await updateDoc(roomRef, patch);
     await updateDoc(roomRef, { cmd: { type:'set', patch:{}, at: serverTimestamp() } });
-  };
+  });
 
-  // --- Быстрый урон ---
+  // Быстрый урон
   document.querySelectorAll('[data-dmg]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const n = Number(btn.dataset.dmg)||0;
@@ -267,48 +203,27 @@
     });
   });
 
-  // --- Шторм ---
-  if ($('stormBtn')) $('stormBtn').onclick = async ()=>{
+  // Шторм
+  $('stormBtn')?.addEventListener('click', async ()=>{
     await updateDoc(roomRef, { cmd: { type:'storm', at: serverTimestamp() } });
-  };
+  });
 
-  // --- Сброс HP ---
-  if ($('resetBtn')) $('resetBtn').onclick = async ()=>{
+  // Сброс HP
+  $('resetBtn')?.addEventListener('click', async ()=>{
     const snap = await getDoc(roomRef);
     const d = snap.data();
     const max = d?.max ?? 500;
     await updateDoc(roomRef, { hp: max, defeated: false, cmd: { type:'set', patch:{hp:max, defeated:false}, at: serverTimestamp() } });
-  };
+  });
 
-  // --- Fork: создать личную комнату из текущей ---
-  if ($('forkBtn')) $('forkBtn').onclick = async ()=>{
-    const user = auth.currentUser; if (!user) return alert('Сначала войдите');
-    const myRoom = `u_${user.uid.slice(0,8)}`;
-    // берём текущие значения как шаблон
-    let base = null;
-    try { const snap = await getDoc(roomRef); base = snap.exists() ? snap.data() : null; } catch(_){}
-    const newRef = doc(db,'rooms', myRoom);
-    await setDoc(newRef, {
-      ...(base || {
-        boss: 'Тунг Тунг Тунг Саур', boss_img: 'https://i.imgur.com/hwJZoMX.png',
-        max: 500, hp: 500, subtitle: 'СЕЗОН 0 | хеллоуинский портал', titlebig: 'СТОЛКНОВЕНИЕ',
-        x: 38, w: 1200, auto_restart: false, defeated: false, public: true
-      }),
-      owner: user.uid, admins: [user.uid], createdAt: serverTimestamp()
-    });
-    setRoom(myRoom);
-    alert('Личная комната создана. Ссылка для OBS обновлена выше.');
-  };
-
-  // --- Диагностика (включается ?debug=1) ---
+  // Диагностика (?debug=1)
   if (qs.get('debug') === '1'){
     const box = document.getElementById('diag');
     box.style.display = 'block';
     box.innerHTML = `<h1>Диагностика</h1>
       <div class="hint mono">projectId: ${firebaseConfig.projectId}</div>
       <div class="hint mono">roomId: ${roomId}</div>`;
-    try{
-      const test = await getDoc(roomRef);
+    try{ const test = await getDoc(roomRef);
       box.innerHTML += `<div class="hint">Firestore доступен: <b>${test ? 'OK' : 'нет данных'}</b></div>`;
     }catch(e){
       box.innerHTML += `<div class="hint" style="color:var(--red)">Ошибка Firestore: ${e.message}</div>`;
