@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>Twitch Bridge</title>
+<body style="background:#0f0f14;color:#fff;font-family:system-ui">
+<script>
+// ----- Настройка -----
+const CLIENT_ID    = 'ВАШ_TWITCH_CLIENT_ID';
+const REDIRECT_URI = location.origin + location.pathname; // текущая twitch.html
+const SCOPES       = ['channel:read:redemptions'];
+// опционально: слушать только конкретные награды
+const REWARD_IDS   = []; // e.g. ['6f1d...'] оставить пустым — слушать все
+
+// Firestore связь с вашей комнатой:
+const ROOM_ID_FROM_QUERY = new URLSearchParams(location.search).get('room') || 'demo';
+
+// ----- OAuth PKCE -----
+function buf2b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+async function pkce(){
+  const verifBytes = crypto.getRandomValues(new Uint8Array(32));
+  const verifier   = buf2b64url(verifBytes);
+  const digest     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge  = buf2b64url(digest);
+  sessionStorage.setItem('t_verifier', verifier);
+  const url = new URL('https://id.twitch.tv/oauth2/authorize');
+  url.searchParams.set('client_id', CLIENT_ID);
+  url.searchParams.set('redirect_uri', REDIRECT_URI);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', SCOPES.join(' '));
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  location.href = url.toString();
+}
+async function exchange(code){
+  const verifier = sessionStorage.getItem('t_verifier');
+  const body = new URLSearchParams({
+    client_id: CLIENT_ID,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: REDIRECT_URI,
+    code_verifier: verifier,
+  });
+  const res = await fetch('https://id.twitch.tv/oauth2/token',{method:'POST', body});
+  if(!res.ok) throw new Error('token exchange failed');
+  return res.json(); // { access_token, refresh_token, expires_in, ... }
+}
+
+// ----- EventSub WebSocket -----
+let ws, sessionId;
+async function connectEventSub(accessToken, userId){
+  ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+  ws.onmessage = async (ev)=>{
+    const msg = JSON.parse(ev.data);
+    if(msg.metadata?.message_type === 'session_welcome'){
+      sessionId = msg.payload.session.id;
+      // подписка на редемпшены
+      await subscribe('channel.channel_points_custom_reward_redemption.add', {broadcaster_user_id: userId}, accessToken);
+    }
+    if(msg.metadata?.message_type === 'notification'){
+      const evType = msg.subscription?.type;
+      if (evType === 'channel.channel_points_custom_reward_redemption.add'){
+        const p = msg.payload.event;
+        // фильтр по reward_id/названию при необходимости
+        if (REWARD_IDS.length && !REWARD_IDS.includes(p.reward.id)) return;
+        triggerRandomSkill(ROOM_ID_FROM_QUERY);
+      }
+    }
+    if(msg.metadata?.message_type === 'session_keepalive'){ /* no-op */ }
+  };
+  ws.onclose = ()=> setTimeout(()=>connectEventSub(accessToken, userId), 1500);
+}
+async function subscribe(type, condition, accessToken){
+  await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+    method:'POST',
+    headers:{
+      'Client-ID': CLIENT_ID,
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type':'application/json'
+    },
+    body: JSON.stringify({
+      type,
+      version: '1',
+      condition,
+      transport: { method:'websocket', session_id: sessionId }
+    })
+  });
+}
+
+// ----- Firestore триггер: дернуть случайный из первых 5 -----
+async function triggerRandomSkill(roomId){
+  // читаем настройки комнаты и actions[0..4]
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+  const { getFirestore, doc, getDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+
+  const firebaseConfig = {/* ВАШИ ДАННЫЕ КАК В control.html */};
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  const ref  = doc(db,'rooms',roomId);
+  const snap = await getDoc(ref);
+  if(!snap.exists()) return;
+  const d = snap.data();
+  const options = (d.actions||[]).slice(0,5).filter(x=>x?.label && Number(x?.dmg)>0);
+  if(!options.length) return;
+  const pick = options[Math.floor(Math.random()*options.length)];
+  await updateDoc(ref, { cmd:{ type:'damage', amount:Number(pick.dmg)||0, at: serverTimestamp() } });
+}
+
+// ----- boot -----
+(async ()=>{
+  const url = new URL(location.href);
+  const code = url.searchParams.get('code');
+  if(!code){ await pkce(); return; }
+  // получили токен
+  const tokens = await exchange(code);
+  // узнаем user_id
+  const uRes = await fetch('https://api.twitch.tv/helix/users', {
+    headers:{ 'Client-ID': CLIENT_ID, 'Authorization':'Bearer '+tokens.access_token }
+  });
+  const { data } = await uRes.json();
+  const userId = data?.[0]?.id;
+  if(!userId) throw new Error('no user id');
+  await connectEventSub(tokens.access_token, userId);
+  document.body.innerHTML = '<div style="padding:20px">Twitch подключен. Можно закрыть вкладку.</div>';
+})();
+</script>
+</body>
+</html>
