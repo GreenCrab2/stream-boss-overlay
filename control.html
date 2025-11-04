@@ -36,11 +36,11 @@
       display:grid;
       /* 1-я колонка (Название) — ~33%, 2-я (Урон) — ~1/6 */
       grid-template-columns: minmax(240px,33%) minmax(110px,16.66%);
-      column-gap: 20px;     /* ← увеличили свободное пространство между колонками */
+      column-gap: 120px;    /* ← Увеличенный свободный промежуток */
       row-gap: 10px;
       align-items:center;
     }
-    .qa-settings .qa-name{ width:100%; } /* заполняет свою 33%-колонку */
+    .qa-settings .qa-name{ width:100%; }
     .qa-settings .qa-dmg{
       width:100%;
       max-width: clamp(110px, 16.66%, 220px);
@@ -48,8 +48,8 @@
     }
     @media (max-width: 720px){
       .qa-settings .qa-row{
-        grid-template-columns: 1fr minmax(110px,33%); /* на мобиле даём больше места */
-        column-gap: 14px;
+        grid-template-columns: 1fr minmax(110px,33%);
+        column-gap: 20px; /* на мобильных чуть меньше */
       }
     }
   </style>
