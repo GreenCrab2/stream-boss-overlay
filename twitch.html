@@ -49,7 +49,6 @@ function parseHashToken(){
   }
   return null;
 }
-
 function startImplicit(){
   const url = new URL('https://id.twitch.tv/oauth2/authorize');
   url.searchParams.set('client_id', CLIENT_ID);
@@ -60,7 +59,6 @@ function startImplicit(){
   if (ROOM_ID) url.searchParams.set('state', 'room='+encodeURIComponent(ROOM_ID));
   location.href = url.toString();
 }
-
 document.getElementById('login').onclick  = ()=> startImplicit();
 document.getElementById('logout').onclick = ()=>{
   sessionStorage.removeItem('tw_access_token');
@@ -116,9 +114,8 @@ async function fetchUser(accessToken){
   });
   const j = await r.json();
   if(!j.data?.length) throw new Error('users: пусто');
-  return j.data[0]; // { id, display_name, ... }
+  return j.data[0];
 }
-
 async function validateToken(accessToken){
   const r = await fetch('https://id.twitch.tv/oauth2/validate', {
     headers: { 'Authorization': 'OAuth ' + accessToken }
@@ -130,7 +127,9 @@ async function validateToken(accessToken){
 
 // ───────────── EventSub WebSocket ─────────────
 let esWs, esSessionId;
-const seen = new Set();
+const seen = new Set();            // защита от дублей
+const startedAt = Date.now();      // момент запуска страницы
+let lastSeenAt  = startedAt;       // двигаем по мере поступления редемпов
 
 async function connectEventSub(accessToken, broadcasterId){
   esWs = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
@@ -154,6 +153,7 @@ async function connectEventSub(accessToken, broadcasterId){
         seen.add(e.id);
 
         const title = (e.reward?.title || '').trim();
+        lastSeenAt = Math.max(lastSeenAt, Date.parse(e.redeemed_at || e.created_at || new Date().toISOString()));
         log('EventSub → Redemption:', title, 'by', e.user_name);
         if (title.toLowerCase() === REWARD_TITLE.trim().toLowerCase()){
           try{ await triggerRandomSkill(); log('→ skill triggered'); }catch(err){ log('Trigger error:', err.message); }
@@ -162,7 +162,6 @@ async function connectEventSub(accessToken, broadcasterId){
     }
   };
 }
-
 async function subscribeEvent(accessToken, type, condition){
   const r = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
     method:'POST',
@@ -176,7 +175,7 @@ async function subscribeEvent(accessToken, type, condition){
   if(!r.ok){ log('EventSub subscribe error:', await r.text()); }
 }
 
-// ───────────── PubSub WebSocket (дополнение) ─────────────
+// ───────────── PubSub (второстепенно) ─────────────
 let psWs, psPing;
 function connectPubSub(accessToken, broadcasterId){
   psWs = new WebSocket('wss://pubsub-edge.twitch.tv');
@@ -201,30 +200,14 @@ function connectPubSub(accessToken, broadcasterId){
   psWs.onmessage = (ev)=>{
     let data;
     try{ data = JSON.parse(ev.data) }catch{ return; }
-
-    if (data.type === 'RESPONSE' && data.error){
+    if (data.type === 'RESPONSE' && data.error)
       log('PubSub RESPONSE error:', data.error);
-    }
-
-    if (data.type === 'MESSAGE' && data.data?.topic?.startsWith('channel-points-channel-v1.')){
-      try{
-        const inner = JSON.parse(data.data.message);
-        const redemption = inner?.data?.redemption;
-        const title = redemption?.reward?.title;
-        if (title){
-          log('PubSub → Redemption:', title, 'by', redemption.user?.login || redemption.user?.display_name || '');
-          if (title.trim().toLowerCase() === REWARD_TITLE.trim().toLowerCase()){
-            triggerRandomSkill().then(()=>log('→ skill triggered (PubSub)'))
-                                .catch(e=>log('Trigger error (PubSub):', e.message));
-          }
-        }
-      }catch{}
-    }
   };
 }
 
-// ───────────── Helix polling fallback ─────────────
+// ───────────── Helix polling fallback (UNFULFILLED + FULFILLED since start) ─────────────
 let pollTimer = null, cachedRewardId = null;
+
 async function getRewardId(accessToken, broadcasterId){
   if (cachedRewardId) return cachedRewardId;
   const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards');
@@ -240,29 +223,51 @@ async function getRewardId(accessToken, broadcasterId){
   return cachedRewardId;
 }
 
+async function fetchRedemptions(accessToken, broadcasterId, status){
+  const rewardId = await getRewardId(accessToken, broadcasterId);
+  if (!rewardId) return [];
+
+  const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions');
+  url.searchParams.set('broadcaster_id', broadcasterId);
+  url.searchParams.set('reward_id', rewardId);
+  url.searchParams.set('status', status);          // UNFULFILLED / FULFILLED
+  url.searchParams.set('first', '50');
+  // url.searchParams.set('sort','NEWEST');        // опционально
+
+  const r = await fetch(url, { headers:{
+    'Client-ID': CLIENT_ID, 'Authorization':'Bearer '+accessToken
+  }});
+  if (!r.ok) return [];
+  const j = await r.json();
+  return j.data || [];
+}
+
 async function pollRedemptions(accessToken, broadcasterId){
   try{
-    const rewardId = await getRewardId(accessToken, broadcasterId);
-    if (!rewardId) return;
-    const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions');
-    url.searchParams.set('broadcaster_id', broadcasterId);
-    url.searchParams.set('reward_id', rewardId);
-    url.searchParams.set('status', 'UNFULFILLED');
-    url.searchParams.set('first', '50');
-    const r = await fetch(url, { headers:{
-      'Client-ID': CLIENT_ID, 'Authorization':'Bearer '+accessToken
-    }});
-    if (!r.ok){ return; }
-    const j = await r.json();
-    for (const it of (j.data||[])){
+    const arr1 = await fetchRedemptions(accessToken, broadcasterId, 'UNFULFILLED');
+    const arr2 = await fetchRedemptions(accessToken, broadcasterId, 'FULFILLED'); // автоодобренные
+
+    const all = [...arr1, ...arr2];
+    if (!all.length) return;
+
+    for (const it of all){
       if (seen.has(it.id)) continue;
+      const t = Date.parse(it.redeemed_at || it.created_at || new Date().toISOString());
+      // берём только те, что пришли ПОСЛЕ старта страницы (чтобы не сработать на «старые»)
+      if (t < startedAt - 2000) continue;
+
       seen.add(it.id);
-      log('Helix poll → Redemption:', it.reward?.title, 'by', it.user_login || it.user_name || '');
-      await triggerRandomSkill().then(()=>log('→ skill triggered (poll)'))
-                                .catch(e=>log('Trigger error (poll):', e.message));
+      lastSeenAt = Math.max(lastSeenAt, t);
+
+      const title = (it.reward?.title || '').trim();
+      log('Helix poll → Redemption:', title, 'by', it.user_login || it.user_name || '');
+      if (title.toLowerCase() === REWARD_TITLE.trim().toLowerCase()){
+        await triggerRandomSkill().then(()=>log('→ skill triggered (poll)'))
+                                  .catch(e=>log('Trigger error (poll):', e.message));
+      }
     }
   }catch(e){
-    // молчим, чтобы не спамить
+    // не шумим в логах
   }
 }
 
@@ -303,22 +308,14 @@ async function triggerRandomSkill(){
   try{
     log('REDIRECT_URI:', REDIRECT_URI);
 
-    // Firebase (лениво) — чтобы кнопки Google сразу работали
     ensureFirebase().catch(e=>log('Firebase init error:', e.message));
 
-    // Twitch токен из #hash
     const fromHash = parseHashToken();
-    if (fromHash){
-      sessionStorage.setItem('tw_access_token', fromHash);
-    }
+    if (fromHash) sessionStorage.setItem('tw_access_token', fromHash);
 
     const accessToken = sessionStorage.getItem('tw_access_token');
-    if (!accessToken){
-      log('Токен Twitch не найден. Нажми «Войти в Twitch».');
-      return;
-    }
+    if (!accessToken){ log('Токен Twitch не найден. Нажми «Войти в Twitch».'); return; }
 
-    // Для отладки — проверим токен и выведем scopes
     await validateToken(accessToken).catch(()=>{});
 
     const user = await fetchUser(accessToken);
@@ -326,7 +323,7 @@ async function triggerRandomSkill(){
 
     await connectEventSub(accessToken, user.id);
     connectPubSub(accessToken, user.id);
-    startPolling(accessToken, user.id);               // ← Helix fallback
+    startPolling(accessToken, user.id);               // ← теперь ловим и FULFILLED
 
     log(`Готово: ждём редемпы «${REWARD_TITLE}» …`);
   }catch(e){
