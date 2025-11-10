@@ -1,439 +1,281 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <title>Twitch Bridge + Stream Boss</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Twitch Bridge → Stream Boss</title>
   <style>
     body{
-      margin:0;
-      padding:12px;
+      margin:0;padding:16px;
+      background:#05060a;color:#f7f7ff;
       font-family:system-ui,Segoe UI,Inter,Roboto,sans-serif;
-      background:#050509;
-      color:#f5f5ff;
+      white-space:pre-wrap;line-height:1.4;
     }
-    .top{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-items:center;
-      margin-bottom:10px;
-    }
-    button{
-      cursor:pointer;
-      padding:8px 12px;
+    h1{font-size:18px;margin:0 0 10px;}
+    .btn{
+      display:inline-block;
+      margin:0 8px 8px 0;
+      padding:8px 14px;
       border-radius:8px;
-      border:1px solid #333644;
-      background:#1f2230;
+      border:1px solid #333645;
+      background:#1e2230;
       color:#fff;
       font-weight:600;
+      cursor:pointer;
     }
-    button:active{ transform:translateY(1px); }
-    #gUser{
-      opacity:.85;
-      margin-left:6px;
-      font-size:13px;
-    }
-    pre{
-      margin:0;
-      padding:10px;
-      border-radius:10px;
-      border:1px solid #2a2d3a;
-      background:#0b0d16;
-      font-size:13px;
-      line-height:1.45;
-      white-space:pre-wrap;
-    }
-    code{
-      padding:2px 4px;
-      border-radius:4px;
-      background:#111320;
-      border:1px solid #333644;
-      font-size:12px;
-    }
+    .btn:active{transform:translateY(1px);}
   </style>
 </head>
 <body>
-  <div class="top">
-    <button id="twLogin">Войти в Twitch</button>
-    <button id="twReset">Сбросить токен</button>
-    <button id="gLogin">Войти в Google (Firebase)</button>
-    <span id="gUser"></span>
-  </div>
+<h1>Twitch ↔ Stream Boss мост</h1>
+<div>
+  <button id="twLogin" class="btn">Войти в Twitch</button>
+  <button id="twReset" class="btn">Сбросить токен</button>
+  <button id="gLogin" class="btn">Войти в Google (Firebase)</button>
+</div>
+<div id="who" style="margin:4px 0 8px;opacity:.9"></div>
+<hr/>
+<div id="log"></div>
 
-  <pre id="log"></pre>
+<script type="module">
+  // ================= НАСТРОЙКИ =================
+  const CLIENT_ID    = 'l8kchqfp0vdlva741gcj6hkvkw08jb';      // твой Twitch Client ID
+  const REWARD_TITLE = 'Применить способность';               // точное название награды
+  const ROOM_ID      = new URLSearchParams(location.search).get('room') || 'demo';
 
-  <script type="module">
-    /**************  НАСТРОЙКИ  **************/
-    const CLIENT_ID     = 'l8kchqfp0vdlva741gcj6hkvkw08jb';           // Twitch Client ID
-    const REDIRECT_URI  = location.origin + location.pathname;        // Должен совпадать с OAuth Redirect URL в консоли Twitch
-    const SCOPES        = ['channel:read:redemptions'];               // только чтение редемпов
-    const REWARD_TITLE  = 'Применить способность';                    // точное имя награды
+  // Firebase (как в control/overlay)
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
+    authDomain: "mini-app-adventure.firebaseapp.com",
+    projectId: "mini-app-adventure",
+    storageBucket: "mini-app-adventure.firebasestorage.app",
+    messagingSenderId: "537034908749",
+    appId: "1:537034908749:web:26edebdf7d9fa2b42a2804",
+    measurementId: "G-0RF2PPHQN8"
+  };
 
-    // Комната берётся из ?room=..., по умолчанию demo
-    const ROOM_ID = new URLSearchParams(location.search).get('room') || 'demo';
+  // ================= УТИЛИТЫ =================
+  const logEl = document.getElementById('log');
+  const log = (...a) => {
+    console.log(...a);
+    logEl.textContent += a.join(' ') + '\n';
+  };
 
-    // Firebase (тот же config, что и в overlay/control)
-    import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getFirestore, doc, getDoc, updateDoc, serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    import {
-      getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  log('REDIRECT_URI:', location.origin + location.pathname);
+  log('Комната:', ROOM_ID);
+  log('');
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyADwdDLpb5Qb2fuDx5vWC3-_BAX4S7ZiJk",
-      authDomain: "mini-app-adventure.firebaseapp.com",
-      projectId: "mini-app-adventure",
-      storageBucket: "mini-app-adventure.firebasestorage.app",
-      messagingSenderId: "537034908749",
-      appId: "1:537034908749:web:26edebdf7d9fa2b42a2804",
-      measurementId: "G-0RF2PPHQN8"
-    };
+  // ================= Firebase =================
+  import {
+    initializeApp
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import {
+    getFirestore, doc, updateDoc, serverTimestamp
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import {
+    getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
-    const fbApp   = initializeApp(firebaseConfig);
-    const db      = getFirestore(fbApp);
-    const fbAuth  = getAuth(fbApp);
-    const roomRef = doc(db, 'rooms', ROOM_ID);
-    const gProv   = new GoogleAuthProvider();
+  const fbApp  = initializeApp(FIREBASE_CONFIG);
+  const db     = getFirestore(fbApp);
+  const auth   = getAuth(fbApp);
+  const roomRef = doc(db, 'rooms', ROOM_ID);
+  const provider = new GoogleAuthProvider();
 
-    /**************  УТИЛИТЫ  **************/
-    const logEl = document.getElementById('log');
-    function log(...a){
-      const line = a.map(x =>
-        (typeof x === 'object' ? JSON.stringify(x) : String(x))
-      ).join(' ');
-      logEl.textContent += line + '\n';
-      logEl.scrollTop = logEl.scrollHeight;
+  const who = document.getElementById('who');
+  const gLoginBtn = document.getElementById('gLogin');
+
+  gLoginBtn.onclick = () => signInWithPopup(auth, provider).catch(e => log('Firebase auth error:', e));
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      who.textContent = `Вошли в Google: ${user.displayName || user.email}`;
+    } else {
+      who.textContent = 'Не вошли в Google. Для записи в Firestore нужен вход.';
     }
+  });
 
-    function bufToB64Url(buf){
-      const bytes = new Uint8Array(buf);
-      let str = '';
-      for (const b of bytes) str += String.fromCharCode(b);
-      return btoa(str).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    }
-    function randomVerifier(){
-      const bytes = new Uint8Array(32);
-      crypto.getRandomValues(bytes);
-      return bufToB64Url(bytes);
-    }
-    async function sha256(str){
-      const data = new TextEncoder().encode(str);
-      const hash = await crypto.subtle.digest('SHA-256', data);
-      return bufToB64Url(hash);
-    }
+  // ================= Twitch OAuth (implicit flow) =================
+  const TOKEN_KEY = 'tw_access_token_v1';
 
-    /**************  СОСТОЯНИЕ TWITCH  **************/
-    let twitchToken = null;   // {access_token, expires_at, refresh_token?...}
-    let twitchUser  = null;   // {id, login, display_name}
-    let rewardId    = null;   // ID награды в Channel Points
-    let lastSeenTs  = Date.now();  // защита от повторной обработки
+  function getRedirectUri() {
+    return location.origin + location.pathname; // twitch.html
+  }
 
-    const LS_TOKEN_KEY = 'sb_twitch_token_v1';
-    const SS_VERIFIER_KEY = 'sb_twitch_pkce_verifier';
+  function saveToken(token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+  function loadToken() {
+    return localStorage.getItem(TOKEN_KEY) || null;
+  }
+  function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+  }
 
-    function saveToken(t){
-      twitchToken = t;
-      try{ localStorage.setItem(LS_TOKEN_KEY, JSON.stringify(t)); }catch(e){}
+  // Парсим access_token из hash, если Twitch только что вернул
+  (function parseHashToken() {
+    if (!location.hash) return;
+    const params = new URLSearchParams(location.hash.slice(1));
+    const token = params.get('access_token');
+    if (token) {
+      saveToken(token);
+      log('Найден access_token в URL, сохранён в localStorage.');
+      // чистим hash, чтобы не мешал
+      history.replaceState({}, document.title, location.pathname + location.search);
     }
-    function loadToken(){
-      try{
-        const raw = localStorage.getItem(LS_TOKEN_KEY);
-        if (!raw) return null;
-        return JSON.parse(raw);
-      }catch(e){ return null; }
-    }
-    function clearToken(){
-      twitchToken = null;
-      twitchUser  = null;
-      rewardId    = null;
-      try{ localStorage.removeItem(LS_TOKEN_KEY); }catch(e){}
-    }
+  })();
 
-    /**************  TWITCH OAUTH (PKCE)  **************/
-    async function startTwitchLogin(){
-      const verifier  = randomVerifier();
-      const challenge = await sha256(verifier);
-      sessionStorage.setItem(SS_VERIFIER_KEY, verifier);
-
-      const params = new URLSearchParams({
-        response_type: 'code',
-        client_id: CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
-        scope: SCOPES.join(' '),
-        state: 'sb_' + Math.random().toString(36).slice(2),
-        code_challenge_method: 'S256',
-        code_challenge: challenge
+  async function validateToken(token) {
+    try {
+      const res = await fetch('https://id.twitch.tv/oauth2/validate', {
+        headers: { 'Authorization': 'OAuth ' + token }
       });
-      const url = `https://id.twitch.tv/oauth2/authorize?${params.toString()}`;
-      location.href = url;
-    }
-
-    async function exchangeCodeForToken(code){
-      const verifier = sessionStorage.getItem(SS_VERIFIER_KEY);
-      if (!verifier){
-        log('Ошибка: PKCE verifier не найден. Попробуй «Сбросить токен» и войти заново.');
-        return;
-      }
-
-      const body = new URLSearchParams({
-        client_id: CLIENT_ID,
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: REDIRECT_URI,
-        code_verifier: verifier
-      });
-
-      const r = await fetch('https://id.twitch.tv/oauth2/token', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/x-www-form-urlencoded' },
-        body
-      });
-      const j = await r.json();
-      if (!r.ok){
-        log('Ошибка обмена токена:', JSON.stringify(j));
-        return;
-      }
-
-      const expiresAt = Date.now() + (j.expires_in - 60) * 1000;
-      saveToken({
-        access_token: j.access_token,
-        refresh_token: j.refresh_token || null,
-        expires_at:   expiresAt,
-        scope: j.scope || SCOPES
-      });
-      log('Twitch: токен получен, срок ~', Math.round(j.expires_in/60), 'мин.');
-
-      // убираем ?code= из URL
-      const url = new URL(location.href);
-      url.searchParams.delete('code');
-      url.searchParams.delete('state');
-      history.replaceState({}, '', url.toString());
-
-      await initWithToken();
-    }
-
-    async function validateToken(){
-      const r = await fetch('https://id.twitch.tv/oauth2/validate', {
-        headers: { 'Authorization':'OAuth ' + twitchToken.access_token }
-      });
-      if (!r.ok) throw new Error('validate failed: ' + r.status);
-      return r.json();
-    }
-
-    /**************  TWITCH API (Helix)  **************/
-    async function initWithToken(){
-      if (!twitchToken) return;
-
-      // проверяем срок действия
-      if (twitchToken.expires_at && Date.now() > twitchToken.expires_at){
-        log('Twitch: токен устарел, нужно войти заново.');
-        return;
-      }
-
-      try{
-        const v = await validateToken();
-        log('Token scopes:', v.scopes.join(', '));
-      }catch(e){
-        log('Не удалось валидировать токен:', e.message||e);
-        return;
-      }
-
-      // получаем инфу о пользователе
-      const userRes = await fetch('https://api.twitch.tv/helix/users', {
-        headers:{
-          'Client-Id': CLIENT_ID,
-          'Authorization':'Bearer ' + twitchToken.access_token
-        }
-      });
-      const userJson = await userRes.json();
-      if (!userRes.ok || !userJson.data || !userJson.data[0]){
-        log('Не получилось получить /helix/users:', JSON.stringify(userJson));
-        return;
-      }
-      twitchUser = userJson.data[0];
-      log(`Twitch: ${twitchUser.display_name} (id ${twitchUser.id})`);
-
-      // ищем нужную награду
-      rewardId = await findRewardId(twitchUser.id);
-      if (!rewardId){
-        log(`Награда "${REWARD_TITLE}" не найдена. Создай её в Channel Points и обнови страницу.`);
-        return;
-      }
-
-      log(`Готово: ждём редемпы «${REWARD_TITLE}» в комнате "${ROOM_ID}".`);
-      startRedemptionPolling();
-    }
-
-    async function findRewardId(broadcasterId){
-      const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards');
-      url.searchParams.set('broadcaster_id', broadcasterId);
-
-      const r = await fetch(url.toString(), {
-        headers:{
-          'Client-Id': CLIENT_ID,
-          'Authorization':'Bearer ' + twitchToken.access_token
-        }
-      });
-      const j = await r.json();
-      if (!r.ok){
-        log('Ошибка получения списка наград:', JSON.stringify(j));
+      if (!res.ok) {
+        log('Validate failed, status', res.status);
         return null;
       }
-      const list = j.data || [];
-      const wanted = (REWARD_TITLE || '').trim().toLowerCase();
-      const found = list.find(r => (r.title || '').trim().toLowerCase() === wanted);
-      if (found){
-        log('Helix: reward id =', found.id);
-        return found.id;
-      }
+      const data = await res.json();
+      log('Token scopes:', (data.scopes || []).join(', ') || '(нет)');
+      log(`Twitch: ${data.login}  (id ${data.user_id})`);
+      return data;
+    } catch (e) {
+      log('Ошибка validate:', e);
       return null;
     }
+  }
 
-    // Периодический опрос Helix разными статусами
-    const STATUSES = ['UNFULFILLED', 'FULFILLED'];
-    let pollTimer = null;
+  function startOAuth() {
+    const redirect_uri = encodeURIComponent(getRedirectUri());
+    const scope = encodeURIComponent('channel:read:redemptions');
+    const state = Math.random().toString(36).slice(2);
+    const url =
+      `https://id.twitch.tv/oauth2/authorize` +
+      `?client_id=${CLIENT_ID}` +
+      `&redirect_uri=${redirect_uri}` +
+      `&response_type=token` +
+      `&scope=${scope}` +
+      `&force_verify=true` +
+      `&state=${state}`;
+    location.href = url;
+  }
 
-    function startRedemptionPolling(){
-      lastSeenTs = Date.now();      // запоминаем момент запуска
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(pollRedemptions, 5000);
-      // сразу один вызов, чтобы не ждать 5 секунд
-      pollRedemptions();
+  document.getElementById('twLogin').onclick = () => startOAuth();
+  document.getElementById('twReset').onclick = () => {
+    clearToken();
+    log('Токен очищен. Нажми «Войти в Twitch».');
+  };
+
+  // ================= PubSub =================
+  let pubsub = null;
+  let pubsubUserId = null;
+  let pubsubToken  = null;
+
+  function connectPubSub() {
+    if (!pubsubUserId || !pubsubToken) {
+      log('PubSub: нет userId или токена');
+      return;
     }
 
-    async function pollRedemptions(){
-      if (!twitchToken || !twitchUser || !rewardId) return;
+    const topic = `channel-points-channel-v1.${pubsubUserId}`;
+    log('PubSub: подключаемся к', topic);
 
-      for (const status of STATUSES){
-        try{
-          const url = new URL('https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions');
-          url.searchParams.set('broadcaster_id', twitchUser.id);
-          url.searchParams.set('reward_id', rewardId);
-          url.searchParams.set('status', status);
-          url.searchParams.set('first', '50');
+    const ws = new WebSocket('wss://pubsub-edge.twitch.tv');
+    pubsub = ws;
 
-          const r = await fetch(url.toString(), {
-            headers:{
-              'Client-Id': CLIENT_ID,
-              'Authorization':'Bearer ' + twitchToken.access_token
-            }
-          });
-          const j = await r.json();
-          if (!r.ok){
-            // не спамим лог каждую секунду
-            log('Helix poll error:', status, JSON.stringify(j));
-            continue;
-          }
-
-          const arr = j.data || [];
-          if (!arr.length) continue;
-
-          const fresh = arr.filter(red => {
-            const ts = Date.parse(red.redeemed_at || red.timestamp || '');
-            return ts && ts > lastSeenTs;
-          });
-
-          if (!fresh.length) continue;
-
-          fresh.sort((a,b)=> Date.parse(a.redeemed_at)-Date.parse(b.redeemed_at));
-          for (const red of fresh){
-            lastSeenTs = Math.max(lastSeenTs, Date.parse(red.redeemed_at));
-            log(`Helix: новое погашение от ${red.user_name} (status=${status})`);
-            await handleRedemption();
-          }
-        }catch(e){
-          log('Poll exception:', status, e.message||e);
+    ws.onopen = () => {
+      log('WS(PubSub): open');
+      const msg = {
+        type: 'LISTEN',
+        nonce: Math.random().toString(36).slice(2),
+        data: {
+          topics: [topic],
+          auth_token: pubsubToken
         }
-      }
-    }
-
-    /**************  FIREBASE: СЛУЧАЙНЫЙ СКИЛЛ  **************/
-    async function handleRedemption(){
-      try{
-        const snap = await getDoc(roomRef);
-        if (!snap.exists()){
-          log('Firestore: комната не найдена:', ROOM_ID);
-          return;
-        }
-        const d = snap.data();
-        const actions = Array.isArray(d.actions) ? d.actions : [];
-
-        // первые 5, только валидные
-        const pool = actions
-          .slice(0,5)
-          .filter(a => a && typeof a.dmg === 'number' && a.dmg !== 0 && a.label);
-
-        if (!pool.length){
-          log('Firestore: нет настроенных быстрых действий (actions[0..4]).');
-          return;
-        }
-
-        const idx = Math.floor(Math.random() * pool.length);
-        const chosen = pool[idx];
-        const amount = Math.abs(chosen.dmg|0) || 1;
-
-        log(`Команда → "${chosen.label}" (−${amount} HP)`);
-
-        await updateDoc(roomRef, {
-          cmd: {
-            type:  'damage',
-            amount: amount,
-            at:    serverTimestamp()
-          }
-        });
-      }catch(e){
-        log('Firestore error:', e.message||e);
-      }
-    }
-
-    /**************  GOOGLE LOGIN (для Firestore)  **************/
-    const gLoginBtn = document.getElementById('gLogin');
-    const gUserSpan = document.getElementById('gUser');
-
-    gLoginBtn.onclick = () => signInWithPopup(fbAuth, gProv).catch(e=>{
-      log('Google auth error:', e.message||e);
-    });
-
-    onAuthStateChanged(fbAuth, user=>{
-      if (user){
-        gUserSpan.textContent = `Вошли в Google: ${user.displayName || user.email}`;
-      } else {
-        gUserSpan.textContent = '';
-      }
-    });
-
-    /**************  КНОПКИ TWITCH  **************/
-    document.getElementById('twLogin').onclick = ()=> startTwitchLogin();
-    document.getElementById('twReset').onclick = ()=>{
-      clearToken();
-      log('Токен очищен. Нажми «Войти в Twitch».');
+      };
+      ws.send(JSON.stringify(msg));
     };
 
-    /**************  ЗАПУСК **************/
-    log('REDIRECT_URI:', REDIRECT_URI);
-    log('Комната:', ROOM_ID);
-    log('');
-
-    // 1) Проверяем — вернулись ли мы с code=... после логина
-    const url = new URL(location.href);
-    const code = url.searchParams.get('code');
-    if (code){
-      log('Найден code в URL, обмениваем на токен...');
-      exchangeCodeForToken(code);
-    }else{
-      // 2) Пытаемся взять токен из localStorage
-      const saved = loadToken();
-      if (saved){
-        twitchToken = saved;
-        log('Найден сохранённый токен, пробуем использовать его...');
-        initWithToken();
-      }else{
-        log('Токен не найден. Нажми «Войти в Twitch».');
+    ws.onmessage = ev => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'RESPONSE') {
+        if (msg.error) log('PubSub RESPONSE error:', msg.error);
+        else           log('PubSub RESPONSE ok, nonce', msg.nonce);
       }
+      if (msg.type === 'MESSAGE') {
+        try {
+          const m = JSON.parse(msg.data.message);
+          const red = m.data?.redemption;
+          const title = red?.reward?.title;
+          const user  = red?.user?.display_name || red?.user?.login;
+          log('Redeem:', title, 'от', user);
+          if (title === REWARD_TITLE) {
+            triggerRandomSkill(user);
+          }
+        } catch (e) {
+          log('Ошибка парсинга MESSAGE:', e);
+        }
+      }
+      if (msg.type === 'PONG') {
+        // пинг-понг, можно игнорировать
+      }
+    };
+
+    ws.onclose = () => {
+      log('WS(PubSub): close → reconnect через 15с…');
+      setTimeout(connectPubSub, 15000);
+    };
+
+    // Пинги раз в 4 минуты, чтобы соединение не умерло
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'PING' }));
+      }
+    }, 4 * 60 * 1000);
+  }
+
+  // ================= Связка с Firestore / оверлеем =================
+  async function triggerRandomSkill(userName) {
+    if (!auth.currentUser) {
+      log('Награда получена, но в Google не вошли — запись в Firestore отменена.');
+      return;
     }
-  </script>
+    try {
+      await updateDoc(roomRef, {
+        cmd: {
+          type: 'randomSkill',
+          from: userName || null,
+          at: serverTimestamp()
+        }
+      });
+      log('→ Firestore: записана команда randomSkill');
+    } catch (e) {
+      log('Ошибка записи в Firestore:', e);
+    }
+  }
+
+  // ================= Старт =================
+  (async function boot() {
+    const token = loadToken();
+    if (!token) {
+      log('Токен не найден. Нажми «Войти в Twitch».');
+      return;
+    }
+
+    log('Токен найден в localStorage, проверяем…');
+    const info = await validateToken(token);
+    if (!info) {
+      clearToken();
+      log('Токен невалиден или истёк. Нажми «Войти в Twitch».');
+      return;
+    }
+
+    pubsubUserId = info.user_id;
+    pubsubToken  = token;
+    log('');
+    log(`Готово: ждём редемпы «${REWARD_TITLE}»…`);
+    log('');
+    connectPubSub();
+  })();
+</script>
 </body>
 </html>
